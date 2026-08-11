@@ -1,0 +1,77 @@
+name: Android build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Paper-Camera-latest.apk
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Paper-Camera-${{ github.sha }}
+          path: Paper-Camera-latest.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Paper-Camera-${{ github.sha }}
+
+      - name: Create or update Latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" \
+              -f sha="${GITHUB_SHA}" -F force=true
+            gh release edit latest \
+              --title "Paper Camera latest" \
+              --notes "Automatic debug build from commit ${GITHUB_SHA}." \
+              --latest
+            gh release upload latest Paper-Camera-latest.apk --clobber
+          else
+            gh release create latest Paper-Camera-latest.apk \
+              --target "${GITHUB_SHA}" \
+              --title "Paper Camera latest" \
+              --notes "Automatic debug build from commit ${GITHUB_SHA}." \
+              --latest
+          fi
