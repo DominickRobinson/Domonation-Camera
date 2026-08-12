@@ -5,6 +5,8 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.provider.DocumentsContract;
+import android.util.Log;
 
 import androidx.documentfile.provider.DocumentFile;
 
@@ -41,15 +43,25 @@ final class GalleryMediaActions {
 
     int deleteDirectly(List<GalleryMediaItem> items) {
         int removed = 0;
-        for (GalleryMediaItem item : items) {
-            try {
-                if (resolver.delete(item.uri, null, null) > 0) removed++;
-                else {
-                    DocumentFile file = DocumentFile.fromSingleUri(context, item.uri);
-                    if (file != null && file.delete()) removed++;
-                }
-            } catch (RuntimeException ignored) { }
-        }
+        for (GalleryMediaItem item : items) if (deleteDirectly(item)) removed++;
         return removed;
+    }
+
+    boolean deleteDirectly(GalleryMediaItem item) {
+        if (DocumentsContract.isDocumentUri(context, item.uri)) {
+            try {
+                if (DocumentsContract.deleteDocument(resolver, item.uri)) return true;
+            } catch (Exception error) {
+                Log.e("DomonationCamera", "Document-provider delete failed for " + item.uri, error);
+            }
+        }
+        try {
+            if (resolver.delete(item.uri, null, null) > 0) return true;
+            DocumentFile file = DocumentFile.fromSingleUri(context, item.uri);
+            return file != null && file.delete();
+        } catch (RuntimeException error) {
+            Log.e("DomonationCamera", "Resolver delete failed for " + item.uri, error);
+            return false;
+        }
     }
 }

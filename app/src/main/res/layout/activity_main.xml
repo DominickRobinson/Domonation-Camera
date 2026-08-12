@@ -7,7 +7,7 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="44dp"
+        android:layout_height="64dp"
         android:background="@drawable/top_rule"
         android:orientation="horizontal">
 
@@ -24,7 +24,8 @@
                 android:contentDescription="Timer off"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
-                android:padding="10dp"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
                 android:src="@drawable/ic_timer_off"
                 android:stateListAnimator="@null"
                 android:tint="@color/ink" />
@@ -52,7 +53,8 @@
             android:contentDescription="Show zoom controls"
             android:minHeight="0dp"
             android:minWidth="0dp"
-            android:padding="10dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
             android:src="@drawable/ic_zoom"
             android:stateListAnimator="@null"
             android:tint="@color/ink" />
@@ -66,7 +68,8 @@
             android:contentDescription="Show exposure controls"
             android:minHeight="0dp"
             android:minWidth="0dp"
-            android:padding="10dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
             android:src="@drawable/ic_exposure"
             android:stateListAnimator="@null"
             android:tint="@color/ink" />
@@ -80,7 +83,8 @@
             android:contentDescription="Flash off"
             android:minHeight="0dp"
             android:minWidth="0dp"
-            android:padding="10dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
             android:src="@drawable/ic_flash_off"
             android:stateListAnimator="@null"
             android:tint="@color/ink" />
@@ -94,7 +98,8 @@
             android:contentDescription="Settings"
             android:minHeight="0dp"
             android:minWidth="0dp"
-            android:padding="10dp"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
             android:src="@drawable/ic_settings"
             android:stateListAnimator="@null"
             android:tint="@color/ink" />
@@ -112,24 +117,19 @@
             android:layout_height="match_parent"
             android:background="@color/camera_background" />
 
-        <TextView
+        <com.domonation.camera.MmdLoadingView
             android:id="@+id/camera_loading"
-            android:layout_width="64dp"
-            android:layout_height="48dp"
-            android:layout_gravity="center"
-            android:contentDescription="Camera loading"
-            android:gravity="center"
-            android:text="•••"
-            android:textColor="@color/paper"
-            android:textSize="24sp" />
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="Camera loading" />
 
     </FrameLayout>
 
     <FrameLayout
         android:id="@+id/control_area"
         android:layout_width="match_parent"
-        android:layout_height="112dp"
-        android:background="@drawable/top_rule">
+        android:layout_height="88dp"
+        android:background="@drawable/bottom_rule">
 
         <LinearLayout
             android:id="@+id/capture_controls"
@@ -139,15 +139,13 @@
             android:orientation="horizontal"
             android:paddingHorizontal="24dp">
 
-            <ImageButton
+            <com.domonation.camera.MmdFabView
                 android:id="@+id/gallery"
-                android:layout_width="68dp"
-                android:layout_height="68dp"
-                android:background="@drawable/circle_outline"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
                 android:contentDescription="Open gallery"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
-                android:padding="18dp"
                 android:src="@drawable/ic_gallery"
                 android:stateListAnimator="@null"
                 android:tint="@color/ink" />
@@ -157,15 +155,13 @@
                 android:layout_height="1dp"
                 android:layout_weight="1" />
 
-            <ImageButton
+            <com.domonation.camera.MmdFabView
                 android:id="@+id/shutter"
-                android:layout_width="88dp"
-                android:layout_height="88dp"
-                android:background="@drawable/shutter_button"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
                 android:contentDescription="Take photo"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
-                android:padding="25dp"
                 android:src="@drawable/ic_photo"
                 android:stateListAnimator="@null"
                 android:tint="@color/paper" />
@@ -175,18 +171,17 @@
                 android:layout_height="1dp"
                 android:layout_weight="1" />
 
-            <ImageButton
+            <com.domonation.camera.MmdFabView
                 android:id="@+id/mode"
-                android:layout_width="68dp"
-                android:layout_height="68dp"
-                android:background="@drawable/circle_outline"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
                 android:contentDescription="Switch to video mode"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
-                android:padding="18dp"
                 android:src="@drawable/ic_video"
                 android:stateListAnimator="@null"
                 android:tint="@color/ink" />
+
         </LinearLayout>
 
         <LinearLayout
@@ -224,7 +219,7 @@
                     android:textColor="@color/ink"
                     android:textSize="17sp" />
 
-                <SeekBar
+                <com.domonation.camera.MmdSliderView
                     android:id="@+id/zoom_bar"
                     android:layout_width="match_parent"
                     android:layout_height="42dp"
@@ -283,7 +278,7 @@
                     android:textColor="@color/ink"
                     android:textSize="17sp" />
 
-                <SeekBar
+                <com.domonation.camera.MmdSliderView
                     android:id="@+id/exposure"
                     android:layout_width="match_parent"
                     android:layout_height="42dp"
@@ -308,4 +303,5 @@
                 android:tint="@color/ink" />
         </LinearLayout>
     </FrameLayout>
+
 </LinearLayout>

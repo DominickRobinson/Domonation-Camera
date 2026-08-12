@@ -14,6 +14,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
@@ -59,10 +60,11 @@ import java.util.concurrent.Executors;
 public final class GalleryActivity extends ComponentActivity {
     private static final String PREFS = "domonation_camera";
     private static final String KEY_TREE = "save_tree";
-    private static final String KEY_GALLERY_ROWS = "gallery_rows";
-    private static final String KEY_GALLERY_COLUMNS = "gallery_columns";
+    private static final int TOP_BAR_DP = 64;
+    private static final int BOTTOM_BAR_DP = 88;
 
     private final ArrayList<GalleryMediaItem> items = new ArrayList<>();
+    private final ArrayList<GalleryMediaItem> allItems = new ArrayList<>();
     private final Set<Uri> selected = new LinkedHashSet<>();
     private final Map<Uri, FrameLayout> visibleCells = new HashMap<>();
     private final ExecutorService loader = Executors.newFixedThreadPool(2);
@@ -72,16 +74,18 @@ public final class GalleryActivity extends ComponentActivity {
     private LinearLayout header;
     private GridLayout grid;
     private TextView title;
-    private TextView pageLabel;
+    private MmdProgressView pageProgress;
     private ImageButton shareButton;
     private ImageButton deleteButton;
     private ImageButton backButton;
-    private TextView previousButton;
-    private TextView nextButton;
+    private ImageButton previousButton;
+    private ImageButton nextButton;
     private int page;
     private GalleryMediaItem openItem;
     private VideoPlayerView openVideo;
     private boolean loading;
+    private boolean selectionMode;
+    private int timeFilterDays;
     private ArrayList<GalleryMediaItem> pendingSystemDelete;
 
     private final ActivityResultLauncher<String[]> mediaPermission =
@@ -93,10 +97,10 @@ public final class GalleryActivity extends ComponentActivity {
                 pendingSystemDelete = null;
                 if (result.getResultCode() == Activity.RESULT_OK) {
                     selected.clear();
-                    openItem = null;
-                    showGrid();
-                    loadItems();
                 }
+                openItem = null;
+                showGrid();
+                loadItems();
             });
 
     @Override protected void attachBaseContext(android.content.Context base) {
@@ -113,7 +117,7 @@ public final class GalleryActivity extends ComponentActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
                 if (openItem != null) { showGrid(); return; }
-                if (!selected.isEmpty()) { clearSelection(); return; }
+                if (selectionMode) { clearSelection(); return; }
                 setEnabled(false);
                 getOnBackPressedDispatcher().onBackPressed();
             }
@@ -132,20 +136,20 @@ public final class GalleryActivity extends ComponentActivity {
         header.setBackgroundResource(R.drawable.top_rule);
         backButton = iconButton(R.drawable.ic_back, "Back");
         backButton.setOnClickListener(v -> getOnBackPressedDispatcher().onBackPressed());
-        header.addView(backButton, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        header.addView(backButton, new LinearLayout.LayoutParams(dp(64), dp(TOP_BAR_DP)));
         title = new TextView(this);
         title.setText("Gallery");
         title.setTextColor(ink());
-        title.setTextSize(24);
+        title.setTextSize(28);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(title, new LinearLayout.LayoutParams(0, dp(52), 1));
-        shareButton = iconButton(R.drawable.ic_share, "Share selected");
-        shareButton.setOnClickListener(v -> shareSelected());
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(TOP_BAR_DP), 1));
+        shareButton = iconButton(R.drawable.ic_edit, "Select items");
         deleteButton = iconButton(R.drawable.ic_delete, "Delete selected");
         deleteButton.setOnClickListener(v -> confirmDelete(currentSelection()));
-        header.addView(shareButton, new LinearLayout.LayoutParams(dp(52), dp(52)));
-        header.addView(deleteButton, new LinearLayout.LayoutParams(dp(52), dp(52)));
-        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+        header.addView(shareButton, new LinearLayout.LayoutParams(dp(56), dp(TOP_BAR_DP)));
+        header.addView(deleteButton, new LinearLayout.LayoutParams(dp(56), dp(TOP_BAR_DP)));
+        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TOP_BAR_DP)));
 
         grid = new GridLayout(this);
         grid.setColumnCount(gridColumns());
@@ -156,19 +160,20 @@ public final class GalleryActivity extends ComponentActivity {
 
         LinearLayout pager = new LinearLayout(this);
         pager.setGravity(Gravity.CENTER);
-        pager.setBackgroundResource(R.drawable.top_rule);
-        previousButton = textButton("‹", "Previous page");
+        pager.setBackgroundResource(R.drawable.bottom_rule);
+        previousButton = navigationArrow(true, "Previous page");
+        previousButton.setVisibility(View.INVISIBLE);
         previousButton.setOnClickListener(v -> { if (page > 0) { page--; renderPage(); } });
-        pageLabel = new TextView(this);
-        pageLabel.setGravity(Gravity.CENTER);
-        pageLabel.setTextColor(ink());
-        pageLabel.setTextSize(16);
-        nextButton = textButton("›", "Next page");
+        pageProgress = new MmdProgressView(this);
+        nextButton = navigationArrow(false, "Next page");
+        nextButton.setVisibility(View.INVISIBLE);
         nextButton.setOnClickListener(v -> { if ((page + 1) * pageSize() < items.size()) { page++; renderPage(); } });
-        pager.addView(previousButton, new LinearLayout.LayoutParams(dp(88), dp(60)));
-        pager.addView(pageLabel, new LinearLayout.LayoutParams(0, dp(60), 1));
-        pager.addView(nextButton, new LinearLayout.LayoutParams(dp(88), dp(60)));
-        root.addView(pager, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
+        pager.addView(previousButton, new LinearLayout.LayoutParams(dp(72), dp(BOTTOM_BAR_DP)));
+        LinearLayout.LayoutParams progressLp = new LinearLayout.LayoutParams(0, dp(24), 1);
+        progressLp.setMargins(dp(4), 0, dp(4), 0);
+        pager.addView(pageProgress, progressLp);
+        pager.addView(nextButton, new LinearLayout.LayoutParams(dp(72), dp(BOTTOM_BAR_DP)));
+        root.addView(pager, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(BOTTOM_BAR_DP)));
         updateActions();
     }
 
@@ -190,16 +195,18 @@ public final class GalleryActivity extends ComponentActivity {
         if (loading) return;
         loading = true;
         title.setText("Loading…");
+        previousButton.setVisibility(View.INVISIBLE);
+        nextButton.setVisibility(View.INVISIBLE);
+        pageProgress.clearPosition();
         loader.execute(() -> {
             String tree = prefs().getString(KEY_TREE, null);
             ArrayList<GalleryMediaItem> found = mediaRepository.load(
                     tree == null ? null : Uri.parse(tree));
             runOnUiThread(() -> {
-                items.clear();
-                items.addAll(found);
-                page = 0;
+                allItems.clear();
+                allItems.addAll(found);
                 loading = false;
-                renderPage();
+                applyTimeFilter(timeFilterDays);
             });
         });
     }
@@ -212,7 +219,7 @@ public final class GalleryActivity extends ComponentActivity {
         int pageSize = pageSize();
         int pages = Math.max(1, (items.size() + pageSize - 1) / pageSize);
         if (page >= pages) page = pages - 1;
-        pageLabel.setText(items.isEmpty() ? "No photos or videos" : (page + 1) + " / " + pages);
+        pageProgress.setPosition(page, pages);
         previousButton.setVisibility(page > 0 ? View.VISIBLE : View.INVISIBLE);
         nextButton.setVisibility(page < pages - 1 ? View.VISIBLE : View.INVISIBLE);
         int start = page * pageSize;
@@ -220,6 +227,43 @@ public final class GalleryActivity extends ComponentActivity {
         for (int i = start; i < end; i++) grid.addView(mediaCell(items.get(i)));
         for (int i = end; i < start + pageSize; i++) grid.addView(emptyCell());
         updateActions();
+    }
+
+    private void showTimeFilter() {
+        GalleryFilterDialog.show(this, timeFilterDays, days -> applyTimeFilter(days));
+    }
+
+    private void applyTimeFilter(int days) {
+        timeFilterDays = days;
+        items.clear();
+        if (days == 0) {
+            items.addAll(allItems);
+        } else if (days == -1) {
+            java.util.Calendar calendar = java.util.Calendar.getInstance();
+            calendar.set(java.util.Calendar.HOUR_OF_DAY, 0);
+            calendar.set(java.util.Calendar.MINUTE, 0);
+            calendar.set(java.util.Calendar.SECOND, 0);
+            calendar.set(java.util.Calendar.MILLISECOND, 0);
+            long today = calendar.getTimeInMillis();
+            long yesterday = today - 24L * 60L * 60L * 1000L;
+            for (GalleryMediaItem item : allItems) {
+                if (item.modified >= yesterday && item.modified < today) items.add(item);
+            }
+        } else {
+            long now = System.currentTimeMillis();
+            long dayMs = 24L * 60L * 60L * 1000L;
+            long newest = days == 7 ? now - 7L * dayMs :
+                    days == 30 ? now - 30L * dayMs : now;
+            long oldest = days == 7 ? now - 14L * dayMs :
+                    days == 30 ? now - 60L * dayMs : now - days * dayMs;
+            for (GalleryMediaItem item : allItems) {
+                if (item.modified >= oldest && item.modified < newest) items.add(item);
+            }
+        }
+        selected.clear();
+        selectionMode = false;
+        page = 0;
+        renderPage();
     }
 
     private View emptyCell() {
@@ -247,14 +291,14 @@ public final class GalleryActivity extends ComponentActivity {
         cell.setLayoutParams(lp);
         ImageView thumbnail = new ImageView(this);
         thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        thumbnail.setBackgroundColor(Color.LTGRAY);
+        thumbnail.setBackgroundColor(paper());
         cell.addView(thumbnail, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (item.isVideo()) {
             ImageView play = new ImageView(this);
             play.setImageResource(R.drawable.ic_play);
             play.setColorFilter(Color.WHITE);
-            play.setBackgroundColor(0x66000000);
+            play.setBackgroundColor(Color.BLACK);
             play.setPadding(dp(9), dp(9), dp(9), dp(9));
             FrameLayout.LayoutParams playLp = new FrameLayout.LayoutParams(dp(42), dp(42), Gravity.CENTER);
             cell.addView(play, playLp);
@@ -263,9 +307,8 @@ public final class GalleryActivity extends ComponentActivity {
         updateCellSelection(item, cell);
         cell.setContentDescription(item.name + (selected.contains(item.uri) ? ", selected" : ""));
         cell.setOnClickListener(v -> {
-            if (selected.isEmpty()) showViewer(item); else toggleSelection(item);
+            if (selectionMode) toggleSelection(item); else showViewer(item);
         });
-        cell.setOnLongClickListener(v -> { toggleSelection(item); return true; });
         loadThumbnail(item, thumbnail);
         return cell;
     }
@@ -286,6 +329,7 @@ public final class GalleryActivity extends ComponentActivity {
     }
 
     private void clearSelection() {
+        selectionMode = false;
         selected.clear();
         for (GalleryMediaItem item : items) {
             FrameLayout cell = visibleCells.get(item.uri);
@@ -300,15 +344,17 @@ public final class GalleryActivity extends ComponentActivity {
             if ("selection".equals(cell.getChildAt(i).getTag())) cell.removeViewAt(i);
         }
         boolean active = selected.contains(item.uri);
-        if (active) {
+        if (selectionMode) {
             TextView check = new TextView(this);
             check.setTag("selection");
-            check.setText("✓");
-            check.setTextSize(22);
+            check.setText("");
             check.setTextColor(paper());
             check.setGravity(Gravity.CENTER);
-            check.setBackgroundColor(ink());
-            cell.addView(check, new FrameLayout.LayoutParams(dp(38), dp(38), Gravity.TOP | Gravity.END));
+            check.setIncludeFontPadding(false);
+            check.setBackgroundResource(active ? R.drawable.selection_checked : R.drawable.selection_unchecked);
+            FrameLayout.LayoutParams checkLp = new FrameLayout.LayoutParams(dp(34), dp(34), Gravity.TOP | Gravity.END);
+            checkLp.setMargins(0, dp(5), dp(5), 0);
+            cell.addView(check, checkLp);
         }
         cell.setContentDescription(item.name + (active ? ", selected" : ""));
     }
@@ -332,11 +378,11 @@ public final class GalleryActivity extends ComponentActivity {
         share.setOnClickListener(v -> share(Collections.singletonList(item)));
         ImageButton delete = iconButton(R.drawable.ic_delete, "Delete");
         delete.setOnClickListener(v -> confirmDelete(Collections.singletonList(item)));
-        viewerHeader.addView(close, new LinearLayout.LayoutParams(dp(52), dp(60)));
-        viewerHeader.addView(detail, new LinearLayout.LayoutParams(0, dp(60), 1));
-        viewerHeader.addView(share, new LinearLayout.LayoutParams(dp(52), dp(60)));
-        viewerHeader.addView(delete, new LinearLayout.LayoutParams(dp(52), dp(60)));
-        root.addView(viewerHeader, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
+        viewerHeader.addView(close, new LinearLayout.LayoutParams(dp(64), dp(TOP_BAR_DP)));
+        viewerHeader.addView(detail, new LinearLayout.LayoutParams(0, dp(TOP_BAR_DP), 1));
+        viewerHeader.addView(share, new LinearLayout.LayoutParams(dp(56), dp(TOP_BAR_DP)));
+        viewerHeader.addView(delete, new LinearLayout.LayoutParams(dp(56), dp(TOP_BAR_DP)));
+        root.addView(viewerHeader, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TOP_BAR_DP)));
 
         if (item.isVideo()) {
             VideoPlayerView video = new VideoPlayerView(this);
@@ -358,22 +404,21 @@ public final class GalleryActivity extends ComponentActivity {
         int index = items.indexOf(item);
         LinearLayout navigation = new LinearLayout(this);
         navigation.setGravity(Gravity.CENTER);
-        navigation.setBackgroundResource(R.drawable.top_rule);
-        TextView previous = textButton("‹", "Previous item");
-        TextView position = new TextView(this);
-        position.setText((index + 1) + " / " + items.size());
-        position.setTextColor(ink());
-        position.setTextSize(15);
-        position.setGravity(Gravity.CENTER);
-        TextView next = textButton("›", "Next item");
+        navigation.setBackgroundResource(R.drawable.bottom_rule);
+        ImageButton previous = navigationArrow(true, "Previous item");
+        MmdProgressView itemProgress = new MmdProgressView(this);
+        ImageButton next = navigationArrow(false, "Next item");
         previous.setVisibility(index > 0 ? View.VISIBLE : View.INVISIBLE);
         next.setVisibility(index + 1 < items.size() ? View.VISIBLE : View.INVISIBLE);
         previous.setOnClickListener(v -> { if (index > 0) showViewer(items.get(index - 1)); });
         next.setOnClickListener(v -> { if (index + 1 < items.size()) showViewer(items.get(index + 1)); });
-        navigation.addView(previous, new LinearLayout.LayoutParams(dp(88), dp(52)));
-        navigation.addView(position, new LinearLayout.LayoutParams(0, dp(52), 1));
-        navigation.addView(next, new LinearLayout.LayoutParams(dp(88), dp(52)));
-        root.addView(navigation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+        navigation.addView(previous, new LinearLayout.LayoutParams(dp(72), dp(BOTTOM_BAR_DP)));
+        itemProgress.setPosition(index, items.size());
+        LinearLayout.LayoutParams itemProgressLp = new LinearLayout.LayoutParams(0, dp(24), 1);
+        itemProgressLp.setMargins(dp(4), 0, dp(4), 0);
+        navigation.addView(itemProgress, itemProgressLp);
+        navigation.addView(next, new LinearLayout.LayoutParams(dp(72), dp(BOTTOM_BAR_DP)));
+        root.addView(navigation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(BOTTOM_BAR_DP)));
     }
 
     private void showGrid() {
@@ -403,39 +448,37 @@ public final class GalleryActivity extends ComponentActivity {
         new AlertDialog.Builder(this)
                 .setTitle(chosen.size() == 1 ? "Delete this item?" : "Delete " + chosen.size() + " items?")
                 .setMessage("This cannot be undone.")
-                .setNegativeButton("CANCEL", null)
-                .setPositiveButton("DELETE", (dialog, which) -> delete(chosen))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Delete", (dialog, which) -> delete(chosen))
                 .show();
     }
 
     private void delete(List<GalleryMediaItem> chosen) {
-        if (Build.VERSION.SDK_INT >= 30) {
-            ArrayList<GalleryMediaItem> mediaItems = new ArrayList<>();
-            ArrayList<GalleryMediaItem> directItems = new ArrayList<>();
-            for (GalleryMediaItem item : chosen) {
-                if ("media".equals(item.uri.getAuthority())) mediaItems.add(item);
-                else directItems.add(item);
+        int directlyRemoved = 0;
+        ArrayList<GalleryMediaItem> protectedMedia = new ArrayList<>();
+        for (GalleryMediaItem item : chosen) {
+            if (mediaActions.deleteDirectly(item)) directlyRemoved++;
+            else if (Build.VERSION.SDK_INT >= 30 && "media".equals(item.uri.getAuthority())) {
+                protectedMedia.add(item);
             }
-            int directlyRemoved = mediaActions.deleteDirectly(directItems);
-            if (!mediaItems.isEmpty()) {
+        }
+        if (!protectedMedia.isEmpty()) {
                 ArrayList<Uri> uris = new ArrayList<>();
-                for (GalleryMediaItem item : mediaItems) uris.add(item.uri);
+                for (GalleryMediaItem item : protectedMedia) uris.add(item.uri);
                 try {
                     PendingIntent request = MediaStore.createDeleteRequest(getContentResolver(), uris);
-                    pendingSystemDelete = mediaItems;
+                    pendingSystemDelete = protectedMedia;
                     deletePermission.launch(new IntentSenderRequest.Builder(request.getIntentSender()).build());
                     return;
                 } catch (RuntimeException error) {
-                    // Leave the item in place when Android cannot present its delete request.
+                    // Refresh below; protected items remain when Android cannot present its request.
                 }
-            }
-            finishDirectDelete(chosen.size(), directlyRemoved);
-            return;
         }
-        finishDirectDelete(chosen.size(), mediaActions.deleteDirectly(chosen));
+        finishDirectDelete(chosen.size(), directlyRemoved);
     }
 
     private void finishDirectDelete(int requested, int removed) {
+        selectionMode = false;
         selected.clear();
         openItem = null;
         showGrid();
@@ -443,9 +486,35 @@ public final class GalleryActivity extends ComponentActivity {
     }
 
     private void updateActions() {
-        boolean active = !selected.isEmpty();
-        shareButton.setVisibility(active ? View.VISIBLE : View.INVISIBLE);
-        deleteButton.setVisibility(active ? View.VISIBLE : View.INVISIBLE);
+        boolean hasSelection = !selected.isEmpty();
+        backButton.setImageResource(selectionMode ? R.drawable.ic_close : R.drawable.ic_back);
+        backButton.setContentDescription(selectionMode ? "Close selection mode" : "Back");
+        if (selectionMode) {
+            shareButton.setImageResource(R.drawable.ic_share);
+            shareButton.setContentDescription("Share selected");
+            shareButton.setOnClickListener(v -> shareSelected());
+            shareButton.setVisibility(hasSelection ? View.VISIBLE : View.INVISIBLE);
+            deleteButton.setImageResource(R.drawable.ic_delete);
+            deleteButton.setContentDescription("Delete selected");
+            deleteButton.setOnClickListener(v -> confirmDelete(currentSelection()));
+            deleteButton.setVisibility(hasSelection ? View.VISIBLE : View.INVISIBLE);
+        } else {
+            shareButton.setImageResource(R.drawable.ic_edit);
+            shareButton.setContentDescription("Select items");
+            shareButton.setOnClickListener(v -> {
+                selectionMode = true;
+                updateActions();
+            });
+            shareButton.setVisibility(View.VISIBLE);
+            deleteButton.setImageResource(R.drawable.ic_filter);
+            deleteButton.setContentDescription("Filter by time");
+            deleteButton.setOnClickListener(v -> showTimeFilter());
+            deleteButton.setVisibility(View.VISIBLE);
+        }
+        for (GalleryMediaItem item : items) {
+            FrameLayout cell = visibleCells.get(item.uri);
+            if (cell != null) updateCellSelection(item, cell);
+        }
     }
 
     private ImageButton iconButton(int icon, String description) {
@@ -454,7 +523,8 @@ public final class GalleryActivity extends ComponentActivity {
         button.setContentDescription(description);
         button.setBackgroundColor(Color.TRANSPARENT);
         button.setColorFilter(ink());
-        button.setPadding(dp(14), dp(14), dp(14), dp(14));
+        button.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        button.setPadding(dp(6), dp(6), dp(6), dp(6));
         button.setStateListAnimator(null);
         return button;
     }
@@ -471,11 +541,18 @@ public final class GalleryActivity extends ComponentActivity {
         return button;
     }
 
+    private ImageButton navigationArrow(boolean previous, String description) {
+        ImageButton button = iconButton(R.drawable.ic_play, description);
+        button.setRotation(previous ? 180f : 0f);
+        button.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        button.setPadding(dp(11), dp(13), dp(11), dp(13));
+        return button;
+    }
+
     private SharedPreferences prefs() { return getSharedPreferences(PREFS, MODE_PRIVATE); }
-    private int gridRows() { return clampGrid(prefs().getInt(KEY_GALLERY_ROWS, 3)); }
-    private int gridColumns() { return clampGrid(prefs().getInt(KEY_GALLERY_COLUMNS, 3)); }
+    private int gridRows() { return 4; }
+    private int gridColumns() { return 3; }
     private int pageSize() { return gridRows() * gridColumns(); }
-    private int clampGrid(int value) { return Math.max(2, Math.min(4, value)); }
     private int paper() { return ContextCompat.getColor(this, R.color.paper); }
     private int ink() { return ContextCompat.getColor(this, R.color.ink); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }

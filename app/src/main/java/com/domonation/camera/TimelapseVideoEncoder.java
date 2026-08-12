@@ -240,3 +240,4 @@ final class TimelapseVideoEncoder {
         boolean started;
     }
 }
+

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="paper">#F5F5EE</color>
-    <color name="ink">#111111</color>
-    <color name="mid_ink">#555555</color>
-    <color name="camera_background">#111111</color>
+    <color name="paper">#FFFFFF</color>
+    <color name="ink">#000000</color>
+    <color name="mid_ink">#000000</color>
+    <color name="camera_background">#000000</color>
     <color name="splash_background">#FFFFFF</color>
 </resources>

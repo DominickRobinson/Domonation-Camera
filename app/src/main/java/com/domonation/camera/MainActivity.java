@@ -40,7 +40,6 @@ import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.activity.ComponentActivity;
@@ -55,6 +54,7 @@ import androidx.camera.core.FocusMeteringAction;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.MeteringPoint;
+import androidx.camera.core.MirrorMode;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.video.FileOutputOptions;
@@ -92,32 +92,29 @@ public final class MainActivity extends ComponentActivity {
     private static final String KEY_REVIEW = "review_before_save";
     private static final String KEY_TIMER = "timer_seconds";
     private static final String KEY_TIMER_ENABLED = "timer_enabled";
-    private static final String KEY_LAPSE = "timelapse_seconds";
-    private static final String KEY_LAPSE_FPS = "timelapse_fps";
-    private static final String KEY_LAPSE_CUSTOM = "timelapse_seconds_custom";
-    private static final String KEY_LAPSE_FPS_CUSTOM = "timelapse_fps_custom";
     private static final String KEY_VIDEO_AUDIO = "video_audio";
     private static final String KEY_VOLUME_SHUTTER = "volume_shutter";
+    private static final String KEY_FLIP_FRONT_CAMERA = "flip_front_camera";
+    private static final String KEY_LAPSE = "timelapse_seconds";
+    private static final String KEY_LAPSE_FPS = "timelapse_fps";
     private static final String KEY_AUDIO_ASKED = "audio_asked";
-    private static final String KEY_REOPEN_SETTINGS = "reopen_settings_after_theme";
-    private static final String KEY_GALLERY_ROWS = "gallery_rows";
-    private static final String KEY_GALLERY_COLUMNS = "gallery_columns";
 
     private PreviewView previewView;
-    private TextView loadingView;
-    private ImageButton shutterButton;
+    private MmdLoadingView loadingView;
+    private MmdFabView shutterButton;
     private ImageButton flashButton;
-    private ImageButton modeButton;
+    private MmdFabView modeButton;
     private ImageButton timerButton;
     private ImageButton zoomToggleButton;
     private ImageButton exposureToggleButton;
-    private ImageButton galleryButton;
+    private ImageButton settingsButton;
+    private MmdFabView galleryButton;
     private TextView timerBadge;
     private View captureControls;
     private View zoomControls;
     private View exposureControls;
-    private SeekBar exposureBar;
-    private SeekBar zoomBar;
+    private MmdSliderView exposureBar;
+    private MmdSliderView zoomBar;
     private TextView zoomLabel;
     private TextView exposureLabel;
     private TickMarkView zoomTicks;
@@ -140,22 +137,20 @@ public final class MainActivity extends ComponentActivity {
     private int flashMode = ImageCapture.FLASH_MODE_OFF;
     private Size embeddedThumbnailSize = new Size(0, 0);
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable restoreGalleryIconRunnable = () -> {
-        if (galleryButton != null) {
-            galleryButton.setImageResource(R.drawable.ic_gallery);
-            galleryButton.setContentDescription("Open gallery");
-        }
-    };
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     private final ArrayList<File> timelapseFrameFiles = new ArrayList<>();
     private final Runnable timelapseCaptureRunnable = this::captureTimelapseFrame;
     private boolean timelapseRunning;
     private boolean timelapseCaptureInFlight;
     private boolean timelapseFinalizing;
+    private final Runnable restoreGalleryIconRunnable = () -> {
+        if (galleryButton != null) {
+            galleryButton.setImageResource(R.drawable.ic_gallery);
+            galleryButton.setContentDescription("Open gallery");
+        }
+    };
     private boolean internalDialogVisible;
-    private boolean recreatingForTheme;
     private Dialog startupDialog;
-    private int timelapseFrames;
     private MediaStorage mediaStorage;
     private CountDownTimer shutterTimer;
     private int targetRotation = Surface.ROTATION_0;
@@ -189,37 +184,39 @@ public final class MainActivity extends ComponentActivity {
         AppTheme.applySystemBars(this);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setWindowAnimations(0);
-        setContentView(R.layout.activity_main);
-        boolean reopenSettings = prefs().getBoolean(KEY_REOPEN_SETTINGS, false);
-        if (!reopenSettings) showStartupBranding();
+        View content = MmdUi.setContent(this, R.layout.activity_main);
+        showStartupBranding();
         mediaStorage = new MediaStorage(this);
 
-        previewView = findViewById(R.id.preview);
-        loadingView = findViewById(R.id.camera_loading);
-        shutterButton = findViewById(R.id.shutter);
-        flashButton = findViewById(R.id.flash);
-        modeButton = findViewById(R.id.mode);
-        timerButton = findViewById(R.id.timer_toggle);
-        timerBadge = findViewById(R.id.timer_badge);
-        zoomToggleButton = findViewById(R.id.zoom_toggle);
-        exposureToggleButton = findViewById(R.id.exposure_toggle);
-        galleryButton = findViewById(R.id.gallery);
-        captureControls = findViewById(R.id.capture_controls);
-        zoomControls = findViewById(R.id.zoom_controls);
-        exposureControls = findViewById(R.id.exposure_controls);
-        exposureBar = findViewById(R.id.exposure);
-        zoomBar = findViewById(R.id.zoom_bar);
-        exposureLabel = findViewById(R.id.exposure_label);
-        zoomTicks = findViewById(R.id.zoom_ticks);
-        exposureTicks = findViewById(R.id.exposure_ticks);
+        previewView = content.findViewById(R.id.preview);
+        loadingView = content.findViewById(R.id.camera_loading);
+        shutterButton = content.findViewById(R.id.shutter);
+        flashButton = content.findViewById(R.id.flash);
+        modeButton = content.findViewById(R.id.mode);
+        timerButton = content.findViewById(R.id.timer_toggle);
+        timerBadge = content.findViewById(R.id.timer_badge);
+        zoomToggleButton = content.findViewById(R.id.zoom_toggle);
+        exposureToggleButton = content.findViewById(R.id.exposure_toggle);
+        settingsButton = content.findViewById(R.id.settings);
+        galleryButton = content.findViewById(R.id.gallery);
+        shutterButton.setPrimary(true);
+        galleryButton.setRoundedSquare(true);
+        captureControls = content.findViewById(R.id.capture_controls);
+        zoomControls = content.findViewById(R.id.zoom_controls);
+        exposureControls = content.findViewById(R.id.exposure_controls);
+        exposureBar = content.findViewById(R.id.exposure);
+        zoomBar = content.findViewById(R.id.zoom_bar);
+        exposureLabel = content.findViewById(R.id.exposure_label);
+        zoomTicks = content.findViewById(R.id.zoom_ticks);
+        exposureTicks = content.findViewById(R.id.exposure_ticks);
         int[] rotatingIds = {R.id.timer_toggle, R.id.timer_badge, R.id.zoom_toggle,
                 R.id.exposure_toggle, R.id.settings, R.id.mode, R.id.shutter, R.id.flash, R.id.gallery,
                 R.id.zoom_out, R.id.zoom_label, R.id.zoom_in, R.id.exposure_down,
                 R.id.exposure_label, R.id.exposure_up, R.id.camera_loading};
-        for (int id : rotatingIds) orientationViews.add(findViewById(id));
+        for (int id : rotatingIds) orientationViews.add(content.findViewById(id));
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         previewView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
-        zoomLabel = findViewById(R.id.zoom_label);
+        zoomLabel = content.findViewById(R.id.zoom_label);
         zoomGestureDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override public boolean onScaleBegin(ScaleGestureDetector detector) {
                 zoomGestureActive = true;
@@ -246,8 +243,8 @@ public final class MainActivity extends ComponentActivity {
                 else next = Surface.ROTATION_90;
                 if (targetRotation == next) return;
                 targetRotation = next;
-                if (imageCapture != null) imageCapture.setTargetRotation(next);
-                if (videoCapture != null) videoCapture.setTargetRotation(next);
+                if (imageCapture != null) imageCapture.setTargetRotation(targetRotation);
+                if (videoCapture != null) videoCapture.setTargetRotation(targetRotation);
                 applyUiRotation(surfaceRotationDegrees(next));
             }
         };
@@ -256,7 +253,7 @@ public final class MainActivity extends ComponentActivity {
 
         modeButton.setOnClickListener(v -> setMode(
                 mode == Mode.PHOTO ? Mode.VIDEO : mode == Mode.VIDEO ? Mode.TIMELAPSE : Mode.PHOTO));
-        findViewById(R.id.settings).setOnClickListener(v -> showSettings());
+        settingsButton.setOnClickListener(v -> showSettings());
         timerButton.setOnClickListener(v -> cycleTimer());
         zoomToggleButton.setOnClickListener(v -> setControlPanel(
                 controlPanel == ControlPanel.ZOOM ? ControlPanel.NONE : ControlPanel.ZOOM));
@@ -267,28 +264,20 @@ public final class MainActivity extends ComponentActivity {
                 startActivity(new Intent(this, GalleryActivity.class)));
         shutterButton.setOnClickListener(v -> onShutter());
         previewView.setOnTouchListener(this::handlePreviewTouch);
-        findViewById(R.id.zoom_out).setOnClickListener(v -> stepZoom(false));
-        findViewById(R.id.zoom_in).setOnClickListener(v -> stepZoom(true));
-        findViewById(R.id.exposure_down).setOnClickListener(v -> stepExposure(false));
-        findViewById(R.id.exposure_up).setOnClickListener(v -> stepExposure(true));
-        exposureBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                if (fromUser) setExposure(progress);
-            }
-            public void onStartTrackingTouch(SeekBar bar) {}
-            public void onStopTrackingTouch(SeekBar bar) {}
+        content.findViewById(R.id.zoom_out).setOnClickListener(v -> stepZoom(false));
+        content.findViewById(R.id.zoom_in).setOnClickListener(v -> stepZoom(true));
+        content.findViewById(R.id.exposure_down).setOnClickListener(v -> stepExposure(false));
+        content.findViewById(R.id.exposure_up).setOnClickListener(v -> stepExposure(true));
+        exposureBar.setOnProgressChangedListener((progress, fromUser) -> {
+            if (fromUser) setExposure(progress);
         });
-        zoomBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+        zoomBar.setOnProgressChangedListener((progress, fromUser) -> {
                 if (!fromUser || updatingZoomBar || camera == null ||
                         camera.getCameraInfo().getZoomState().getValue() == null) return;
                 androidx.camera.core.ZoomState state = camera.getCameraInfo().getZoomState().getValue();
-                float fraction = progress / (float) Math.max(1, bar.getMax());
+                float fraction = progress / (float) Math.max(1, zoomBar.getMax());
                 setZoomRatio(state.getMinZoomRatio() +
                         fraction * (state.getMaxZoomRatio() - state.getMinZoomRatio()));
-            }
-            public void onStartTrackingTouch(SeekBar bar) {}
-            public void onStopTrackingTouch(SeekBar bar) {}
         });
 
         updateModeUi();
@@ -307,10 +296,6 @@ public final class MainActivity extends ComponentActivity {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCamera();
         } else cameraPermission.launch(Manifest.permission.CAMERA);
-        if (reopenSettings) {
-            prefs().edit().remove(KEY_REOPEN_SETTINGS).apply();
-            showSettings();
-        }
     }
 
     private SharedPreferences prefs() {
@@ -375,8 +360,6 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void setControlPanel(ControlPanel selected) {
-        if ((recording != null || timelapseRunning || timelapseFinalizing) &&
-                selected != ControlPanel.NONE) return;
         controlPanel = selected;
         captureControls.setVisibility(selected == ControlPanel.NONE ? View.VISIBLE : View.GONE);
         zoomControls.setVisibility(selected == ControlPanel.ZOOM ? View.VISIBLE : View.GONE);
@@ -420,7 +403,10 @@ public final class MainActivity extends ComponentActivity {
 
         if (mode == Mode.VIDEO) {
             recorder = new Recorder.Builder().build();
-            videoCapture = VideoCapture.withOutput(recorder);
+            videoCapture = new VideoCapture.Builder<>(recorder)
+                    .setMirrorMode(prefs().getBoolean(KEY_FLIP_FRONT_CAMERA, true) ?
+                            MirrorMode.MIRROR_MODE_ON_FRONT_ONLY : MirrorMode.MIRROR_MODE_OFF)
+                    .build();
             videoCapture.setTargetRotation(targetRotation);
             camera = cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA,
                     previewUseCase, videoCapture);
@@ -590,9 +576,6 @@ public final class MainActivity extends ComponentActivity {
 
     private void onShutter() {
         if (controlPanel != ControlPanel.NONE) setControlPanel(ControlPanel.NONE);
-        if (timelapseFinalizing) {
-            return;
-        }
         if (shutterTimer != null) {
             shutterTimer.cancel();
             shutterTimer = null;
@@ -730,10 +713,14 @@ public final class MainActivity extends ComponentActivity {
             pending = pending.withAudioEnabled();
         }
         shutterButton.setContentDescription("Stop video");
+        shutterButton.setActive(true);
         recording = pending.start(ContextCompat.getMainExecutor(this), event -> {
             if (event instanceof VideoRecordEvent.Finalize) {
                 VideoRecordEvent.Finalize done = (VideoRecordEvent.Finalize) event;
                 recording = null;
+                setRecordingControlsVisible(true);
+                setControlPanel(ControlPanel.NONE);
+                shutterButton.setActive(false);
                 shutterButton.setContentDescription("Start video");
                 if (done.hasError()) {
                     temp.delete();
@@ -741,138 +728,54 @@ public final class MainActivity extends ComponentActivity {
                 else saveCompletedCapture(temp, "video/mp4");
             }
         });
+        setRecordingControlsVisible(false);
     }
 
-    private void showVideoReview(File temp) {
-        VideoPlayerView video = new VideoPlayerView(this);
-        video.setVideo(Uri.fromFile(temp), true);
-        showFullScreenReview("Review video", video,
-                () -> saveCompletedCapture(temp, "video/mp4"),
-                () -> {
-                    temp.delete();
-                    shutterButton.setEnabled(true);
-                });
-    }
-
-    private void showFullScreenReview(String title, View media, Runnable save, Runnable discard) {
-        internalDialogVisible = true;
-        Dialog dialog = new Dialog(this, android.R.style.Theme_Material_Light_NoActionBar_Fullscreen);
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(ContextCompat.getColor(this, R.color.paper));
-
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        header.setBackgroundResource(R.drawable.top_rule);
-        Button close = reviewTextButton("×");
-        close.setTextSize(34);
-        header.addView(close, new LinearLayout.LayoutParams(dp(64), dp(64)));
-        TextView heading = new TextView(this);
-        heading.setText(title);
-        heading.setTextColor(ContextCompat.getColor(this, R.color.ink));
-        heading.setTextSize(21);
-        heading.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        heading.setTypeface(null, android.graphics.Typeface.BOLD);
-        header.addView(heading, new LinearLayout.LayoutParams(0, dp(64), 1));
-        page.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)));
-
-        media.setBackgroundColor(ContextCompat.getColor(this, R.color.paper));
-        page.addView(media, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-
-        LinearLayout actions = new LinearLayout(this);
-        actions.setBackgroundResource(R.drawable.top_rule);
-        actions.setGravity(android.view.Gravity.CENTER);
-        actions.setPadding(dp(16), dp(8), dp(16), dp(8));
-        Button retake = reviewTextButton("RETAKE");
-        Button keep = reviewTextButton("SAVE");
-        actions.addView(retake, new LinearLayout.LayoutParams(0, dp(64), 1));
-        actions.addView(keep, new LinearLayout.LayoutParams(0, dp(64), 1));
-        page.addView(actions, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(80)));
-
-        boolean[] resolved = {false};
-        Runnable stopMedia = () -> {
-            if (media instanceof VideoPlayerView) ((VideoPlayerView) media).release();
-        };
-        close.setOnClickListener(v -> {
-            if (!resolved[0]) { resolved[0] = true; stopMedia.run(); discard.run(); }
-            dialog.dismiss();
-        });
-        retake.setOnClickListener(v -> {
-            if (!resolved[0]) { resolved[0] = true; stopMedia.run(); discard.run(); }
-            dialog.dismiss();
-        });
-        keep.setOnClickListener(v -> {
-            if (!resolved[0]) { resolved[0] = true; stopMedia.run(); save.run(); }
-            dialog.dismiss();
-        });
-        dialog.setOnCancelListener(d -> {
-            if (!resolved[0]) { resolved[0] = true; stopMedia.run(); discard.run(); }
-        });
-        dialog.setOnDismissListener(d -> internalDialogVisible = false);
-        dialog.setOnKeyListener((d, keyCode, event) -> {
-            if (keyCode != android.view.KeyEvent.KEYCODE_BACK) return false;
-            if (event.getAction() == android.view.KeyEvent.ACTION_UP) {
-                if (!resolved[0]) { resolved[0] = true; stopMedia.run(); discard.run(); }
-                dialog.dismiss();
-            }
-            return true;
-        });
-        dialog.setCancelable(true);
-        dialog.setCanceledOnTouchOutside(false);
-        dialog.setContentView(page);
-        dialog.show();
-        if (dialog.getWindow() != null) dialog.getWindow().setLayout(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-    }
-
-    private Button reviewTextButton(String text) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextColor(ContextCompat.getColor(this, R.color.ink));
-        button.setTextSize(16);
-        button.setBackgroundColor(Color.TRANSPARENT);
-        button.setStateListAnimator(null);
-        button.setMinimumHeight(0);
-        button.setMinimumWidth(0);
-        return button;
-    }
-
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
+    private void setRecordingControlsVisible(boolean visible) {
+        int visibility = visible ? View.VISIBLE : View.INVISIBLE;
+        modeButton.setVisibility(visibility);
+        galleryButton.setVisibility(visibility);
+        timerButton.setVisibility(visibility);
+        timerBadge.setVisibility(visible && prefs().getBoolean(KEY_TIMER_ENABLED, false) ?
+                View.VISIBLE : View.GONE);
+        settingsButton.setVisibility(visibility);
+        zoomToggleButton.setVisibility(View.VISIBLE);
+        exposureToggleButton.setVisibility(View.VISIBLE);
+        flashButton.setVisibility(View.VISIBLE);
     }
 
     private void startTimelapse() {
+        if (imageCapture == null) return;
         timelapseRunning = true;
         timelapseFinalizing = false;
         timelapseCaptureInFlight = false;
-        timelapseFrames = 0;
         for (File frame : timelapseFrameFiles) frame.delete();
         timelapseFrameFiles.clear();
+        shutterButton.setActive(true);
         shutterButton.setContentDescription("Stop timelapse");
         captureTimelapseFrame();
     }
 
     private void captureTimelapseFrame() {
-        if (!timelapseRunning || timelapseCaptureInFlight) return;
+        if (!timelapseRunning || timelapseCaptureInFlight || imageCapture == null) return;
         imageCapture.setTargetRotation(targetRotation);
         timelapseCaptureInFlight = true;
-        int before = timelapseFrames;
-        File temp = new File(getCacheDir(), newName("LAPSE", ".jpg"));
-        imageCapture.takePicture(new ImageCapture.OutputFileOptions.Builder(temp).build(),
+        File frame = new File(getCacheDir(), newName("LAPSE", ".jpg"));
+        imageCapture.takePicture(new ImageCapture.OutputFileOptions.Builder(frame).build(),
                 ContextCompat.getMainExecutor(this), new ImageCapture.OnImageSavedCallback() {
                     @Override public void onImageSaved(@NonNull ImageCapture.OutputFileResults result) {
                         timelapseCaptureInFlight = false;
-                        timelapseFrames = before + 1;
-                        timelapseFrameFiles.add(temp);
+                        timelapseFrameFiles.add(frame);
                         if (timelapseRunning) {
                             int delay = prefs().getInt(KEY_LAPSE, 5);
                             handler.postDelayed(timelapseCaptureRunnable, delay * 1000L);
                         } else finalizeTimelapse();
                     }
+
                     @Override public void onError(@NonNull ImageCaptureException error) {
                         timelapseCaptureInFlight = false;
-                        temp.delete();
-                        if (timelapseRunning) handler.postDelayed(timelapseCaptureRunnable, 1000);
+                        frame.delete();
+                        if (timelapseRunning) handler.postDelayed(timelapseCaptureRunnable, 1000L);
                         else finalizeTimelapse();
                     }
                 });
@@ -881,7 +784,7 @@ public final class MainActivity extends ComponentActivity {
     private void stopTimelapse() {
         timelapseRunning = false;
         handler.removeCallbacks(timelapseCaptureRunnable);
-        if (shutterTimer != null) shutterTimer.cancel();
+        shutterButton.setActive(false);
         shutterButton.setContentDescription("Start timelapse");
         if (!timelapseCaptureInFlight) finalizeTimelapse();
     }
@@ -898,23 +801,66 @@ public final class MainActivity extends ComponentActivity {
         ArrayList<File> frames = new ArrayList<>(timelapseFrameFiles);
         File video = new File(getCacheDir(), newName("TIMELAPSE", ".mp4"));
         backgroundExecutor.execute(() -> {
-            Exception failure = null;
+            boolean encoded = false;
             try {
                 TimelapseVideoEncoder.encode(frames, video, fps);
+                encoded = video.length() > 0;
             } catch (Exception error) {
-                failure = error;
                 Log.e("DomonationCamera", "Timelapse video encoding failed", error);
             }
-            Exception result = failure;
+            boolean ready = encoded;
             handler.post(() -> {
-                boolean videoSaved = result == null && video.length() > 0 && saveFile(video, "video/mp4");
-                video.delete();
                 for (File frame : frames) frame.delete();
                 timelapseFrameFiles.clear();
                 timelapseFinalizing = false;
                 shutterButton.setEnabled(true);
+                if (!ready) {
+                    video.delete();
+                } else if (prefs().getBoolean(KEY_REVIEW, false)) {
+                    showVideoReview(video);
+                } else {
+                    saveCompletedCapture(video, "video/mp4");
+                }
             });
         });
+    }
+
+    private void showVideoReview(File temp) {
+        VideoPlayerView video = new VideoPlayerView(this);
+        video.setVideo(Uri.fromFile(temp), true);
+        showFullScreenReview("Review video", video,
+                () -> saveCompletedCapture(temp, "video/mp4"),
+                () -> {
+                    temp.delete();
+                    shutterButton.setEnabled(true);
+                });
+    }
+
+    private void showFullScreenReview(String title, View media, Runnable save, Runnable discard) {
+        internalDialogVisible = true;
+        Runnable stopMedia = () -> {
+            if (media instanceof VideoPlayerView) ((VideoPlayerView) media).release();
+        };
+        MmdReviewDialog.show(this, title, media,
+                () -> { stopMedia.run(); save.run(); },
+                () -> { stopMedia.run(); discard.run(); },
+                () -> internalDialogVisible = false);
+    }
+
+    private Button reviewTextButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextColor(ContextCompat.getColor(this, R.color.ink));
+        button.setTextSize(16);
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setStateListAnimator(null);
+        button.setMinimumHeight(0);
+        button.setMinimumWidth(0);
+        return button;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void saveCompletedCapture(File temp, String mime) {
@@ -935,17 +881,10 @@ public final class MainActivity extends ComponentActivity {
         internalDialogVisible = true;
         new SettingsDialogController(this, prefs(), new SettingsDialogController.Host() {
              public void chooseFolder() { folderPicker.launch(null); }
-             public void useDefaultFolder() { }
-             public void onThemeChanged() {
-                recreatingForTheme = true;
-                prefs().edit().putBoolean(KEY_REOPEN_SETTINGS, true).apply();
-                recreate();
-             }
              public void onSettingsDismissed() {
                 internalDialogVisible = false;
-                if (recreatingForTheme) return;
                 updateTimerUi();
-                if (mode != Mode.VIDEO && !timelapseRunning && !timelapseFinalizing) startCamera();
+                if (recording == null) startCamera();
             }
         }).show();
     }
