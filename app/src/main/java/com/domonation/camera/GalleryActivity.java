@@ -59,7 +59,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class GalleryActivity extends ComponentActivity {
-    private static final String PREFS = "paper_camera";
+    private static final String PREFS = "domonation_camera";
     private static final String KEY_TREE = "save_tree";
     private static final String KEY_GALLERY_ROWS = "gallery_rows";
     private static final String KEY_GALLERY_COLUMNS = "gallery_columns";

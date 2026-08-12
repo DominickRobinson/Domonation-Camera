@@ -72,7 +72,7 @@ final class MediaStorage {
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, source.getName());
             values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
             values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                    mime.startsWith("video") ? "Movies/PaperCamera" : "Pictures/PaperCamera");
+                    mime.startsWith("video") ? "Movies/DomonationCamera" : "Pictures/DomonationCamera");
             if (Build.VERSION.SDK_INT >= 29) values.put(MediaStore.MediaColumns.IS_PENDING, 1);
             Uri collection = mime.startsWith("video") ?
                     MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;

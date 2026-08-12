@@ -15,7 +15,7 @@
         android:label="Domonation Camera"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.PaperCamera">
+        android:theme="@style/Theme.DomonationCamera">
         <activity
             android:name=".GalleryActivity"
             android:exported="false"
@@ -24,7 +24,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.PaperCamera.Splash">
+            android:theme="@style/Theme.DomonationCamera.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

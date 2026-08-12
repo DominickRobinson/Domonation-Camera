@@ -16,7 +16,7 @@ final class AppTheme {
     private AppTheme() { }
 
     static Context wrap(Context context) {
-        int selected = context.getSharedPreferences("paper_camera", Context.MODE_PRIVATE)
+        int selected = context.getSharedPreferences("domonation_camera", Context.MODE_PRIVATE)
                 .getInt(KEY, AUTO);
         if (selected == AUTO) return context;
         Configuration override = new Configuration();

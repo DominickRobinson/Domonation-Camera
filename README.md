@@ -1,4 +1,4 @@
-# Paper Camera
+# Domonation Camera
 
 A deliberately small, e-ink-friendly Android camera. It captures JPEG photographs and can explicitly request an embedded EXIF thumbnail from the Android camera hardware for devices such as the Canon SELPHY CP1500.
 
@@ -21,7 +21,7 @@ A deliberately small, e-ink-friendly Android camera. It captures JPEG photograph
 - The viewfinder remains fixed while saved photo/video orientation follows the device
 - Header and bottom bars remain fixed while their icons and labels rotate in place
 - Optional review before save
-- User-selectable save folder, with `Pictures/PaperCamera` as the default
+- User-selectable save folder, with `Pictures/DomonationCamera` as the default
 - Tabbed General, Photo, Video, and Timelapse settings with radio choices
 
 ## Build
@@ -35,8 +35,8 @@ Open the directory in Android Studio and run the `app` configuration, or run:
 The debug APK is produced at `app/build/outputs/apk/debug/app-debug.apk`.
 
 GitHub Actions also builds the APK on every push and pull request. Pushes to
-`main` create or update the **Paper Camera latest** release and attach
-`Paper-Camera-latest.apk`; other branches and pull requests expose their APKs
+`main` create or update the **Domonation Camera latest** release and attach
+`Domonation-Camera-latest.apk`; other branches and pull requests expose their APKs
 as 30-day workflow artifacts.
 
 ## Device behavior

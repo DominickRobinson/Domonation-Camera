@@ -76,9 +76,9 @@ final class GalleryMediaRepository {
 
     private void loadDefaultMedia(List<GalleryMediaItem> result) {
         queryCollection(result, MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                MediaStore.Images.Media.RELATIVE_PATH + "=?", new String[]{"Pictures/PaperCamera/"});
+                MediaStore.Images.Media.RELATIVE_PATH + "=?", new String[]{"Pictures/DomonationCamera/"});
         queryCollection(result, MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                MediaStore.Video.Media.RELATIVE_PATH + "=?", new String[]{"Movies/PaperCamera/"});
+                MediaStore.Video.Media.RELATIVE_PATH + "=?", new String[]{"Movies/DomonationCamera/"});
     }
 
     private void queryCollection(List<GalleryMediaItem> result, Uri collection,

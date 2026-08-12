@@ -1,4 +1,4 @@
-# Paper Camera development guidance
+# Domonation Camera development guidance
 
 ## Project priorities
 

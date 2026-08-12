@@ -133,7 +133,7 @@ final class SettingsDialogController {
             content.addView(galleryGridSetting());
             content.addView(sectionTitle("Save location"));
             TextView location = note(prefs.getString(KEY_TREE, null) == null ?
-                    "Pictures/PaperCamera and Movies/PaperCamera" : "Selected folder (photos and videos)");
+                    "Pictures/DomonationCamera and Movies/DomonationCamera" : "Selected folder (photos and videos)");
             content.addView(location);
             Button choose = settingsButton("CHOOSE FOLDER");
             choose.setOnClickListener(v -> { dialog.dismiss(); host.chooseFolder(); });
@@ -141,7 +141,7 @@ final class SettingsDialogController {
             Button defaults = settingsButton("USE DEFAULT FOLDERS");
             defaults.setOnClickListener(v -> {
                 prefs.edit().remove(KEY_TREE).apply();
-                location.setText("Pictures/PaperCamera and Movies/PaperCamera");
+                location.setText("Pictures/DomonationCamera and Movies/DomonationCamera");
                 host.useDefaultFolder();
             });
             content.addView(defaults, matchHeight(48));

@@ -89,7 +89,7 @@ public final class MainActivity extends ComponentActivity {
     private enum Mode { PHOTO, VIDEO, TIMELAPSE }
     private enum ControlPanel { NONE, ZOOM, EXPOSURE }
 
-    private static final String PREFS = "paper_camera";
+    private static final String PREFS = "domonation_camera";
     private static final String KEY_TREE = "save_tree";
     private static final String KEY_THUMB = "exif_thumbnail";
     private static final String KEY_REVIEW = "review_before_save";
@@ -919,7 +919,7 @@ public final class MainActivity extends ComponentActivity {
                 TimelapseVideoEncoder.encode(frames, video, fps);
             } catch (Exception error) {
                 failure = error;
-                Log.e("PaperCamera", "Timelapse video encoding failed", error);
+                Log.e("DomonationCamera", "Timelapse video encoding failed", error);
             }
             Exception result = failure;
             handler.post(() -> {

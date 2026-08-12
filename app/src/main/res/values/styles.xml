@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PaperCamera" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.DomonationCamera" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowLightStatusBar">true</item>
@@ -15,7 +15,7 @@
         <item name="android:windowActivityTransitions">false</item>
     </style>
 
-    <style name="Theme.PaperCamera.Splash" parent="Theme.PaperCamera">
+    <style name="Theme.DomonationCamera.Splash" parent="Theme.DomonationCamera">
         <item name="android:windowBackground">@drawable/splash_screen_legacy</item>
         <item name="android:windowDisablePreview">false</item>
     </style>
