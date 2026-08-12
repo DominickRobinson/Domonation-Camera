@@ -8,12 +8,29 @@ android {
     namespace = "com.domonation.camera"
     compileSdk = 36
 
+    val releaseStoreFile = providers.gradleProperty("releaseStoreFile").orNull
+    val releaseStorePassword = providers.gradleProperty("releaseStorePassword").orNull
+    val releaseKeyAlias = providers.gradleProperty("releaseKeyAlias").orNull
+    val releaseKeyPassword = providers.gradleProperty("releaseKeyPassword").orNull
+
+    signingConfigs {
+        if (releaseStoreFile != null && releaseStorePassword != null &&
+            releaseKeyAlias != null && releaseKeyPassword != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.domonation.camera"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildFeatures {
@@ -28,6 +45,12 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
 }
 

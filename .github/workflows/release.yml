@@ -1,0 +1,102 @@
+name: Publish Android release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          version_name="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          if [[ -z "$version_name" ]]; then
+            echo "Could not read versionName from app/build.gradle.kts" >&2
+            exit 1
+          fi
+          echo "name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version_name" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether version is already published
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$RELEASE_TAG is already published; no new release is needed."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Java
+        if: steps.existing.outputs.exists == 'false'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        if: steps.existing.outputs.exists == 'false'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore release keystore
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
+        shell: bash
+        run: |
+          if [[ -z "$SIGNING_KEY_BASE64" ]]; then
+            echo "SIGNING_KEY_BASE64 is not configured in repository secrets." >&2
+            exit 1
+          fi
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+
+      - name: Build signed release APK
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          ORG_GRADLE_PROJECT_releaseStoreFile: ${{ runner.temp }}/release.jks
+          ORG_GRADLE_PROJECT_releaseStorePassword: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_releaseKeyAlias: ${{ secrets.SIGNING_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_releaseKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Name APK
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: mv app/build/outputs/apk/release/app-release.apk "Domonation-Camera-v${VERSION_NAME}.apk"
+
+      - name: Publish GitHub release
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        shell: bash
+        run: |
+          prerelease=""
+          if [[ "$VERSION_NAME" == 0.* ]]; then
+            prerelease="--prerelease"
+          fi
+          gh release create "$RELEASE_TAG" \
+            "Domonation-Camera-v${VERSION_NAME}.apk" \
+            --target "$GITHUB_SHA" \
+            --title "Domonation Camera ${VERSION_NAME}" \
+            --generate-notes \
+            $prerelease
