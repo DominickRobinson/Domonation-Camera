@@ -102,6 +102,7 @@ public final class MainActivity extends ComponentActivity {
     private static final String KEY_VIDEO_AUDIO = "video_audio";
     private static final String KEY_VOLUME_SHUTTER = "volume_shutter";
     private static final String KEY_AUDIO_ASKED = "audio_asked";
+    private static final String KEY_REOPEN_SETTINGS = "reopen_settings_after_theme";
     private static final String KEY_GALLERY_ROWS = "gallery_rows";
     private static final String KEY_GALLERY_COLUMNS = "gallery_columns";
 
@@ -152,6 +153,8 @@ public final class MainActivity extends ComponentActivity {
     private boolean timelapseCaptureInFlight;
     private boolean timelapseFinalizing;
     private boolean internalDialogVisible;
+    private boolean recreatingForTheme;
+    private Dialog startupDialog;
     private int timelapseFrames;
     private boolean lastSaveUsedFallback;
     private MediaStorage mediaStorage;
@@ -180,12 +183,18 @@ public final class MainActivity extends ComponentActivity {
                 setStatus("Save folder selected");
             });
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    @Override protected void attachBaseContext(android.content.Context base) {
+        super.attachBaseContext(AppTheme.wrap(base));
+    }
+
+    @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        AppTheme.applySystemBars(this);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setWindowAnimations(0);
         setContentView(R.layout.activity_main);
+        boolean reopenSettings = prefs().getBoolean(KEY_REOPEN_SETTINGS, false);
+        if (!reopenSettings) showStartupBranding();
         mediaStorage = new MediaStorage(this);
 
         previewView = findViewById(R.id.preview);
@@ -301,10 +310,39 @@ public final class MainActivity extends ComponentActivity {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCamera();
         } else cameraPermission.launch(Manifest.permission.CAMERA);
+        if (reopenSettings) {
+            prefs().edit().remove(KEY_REOPEN_SETTINGS).apply();
+            showSettings();
+        }
     }
 
     private SharedPreferences prefs() {
         return getSharedPreferences(PREFS, MODE_PRIVATE);
+    }
+
+    private void showStartupBranding() {
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Material_Light_NoActionBar_Fullscreen);
+        dialog.getWindow();
+        LinearLayout page = new LinearLayout(this);
+        page.setGravity(android.view.Gravity.CENTER);
+        page.setBackgroundColor(Color.WHITE);
+        ImageView branding = new ImageView(this);
+        branding.setImageResource(R.drawable.domonation_splash);
+        branding.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        page.addView(branding, new LinearLayout.LayoutParams(dp(360), dp(360)));
+        dialog.setCancelable(false);
+        dialog.setContentView(page);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setWindowAnimations(0);
+            dialog.getWindow().setLayout(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        }
+        startupDialog = dialog;
+        handler.postDelayed(() -> {
+            if (startupDialog == dialog) startupDialog = null;
+            if (dialog.isShowing()) dialog.dismiss();
+        }, 1800);
     }
 
     private float surfaceRotationDegrees(int rotation) {
@@ -355,7 +393,8 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void styleHeaderControl(ImageButton button, boolean active) {
-        button.setBackgroundColor(ContextCompat.getColor(this, active ? R.color.ink : R.color.paper));
+        button.setBackgroundColor(active ?
+                ContextCompat.getColor(this, R.color.ink) : Color.TRANSPARENT);
         button.setImageTintList(android.content.res.ColorStateList.valueOf(
                 ContextCompat.getColor(this, active ? R.color.paper : R.color.ink)));
     }
@@ -925,8 +964,14 @@ public final class MainActivity extends ComponentActivity {
         new SettingsDialogController(this, prefs(), new SettingsDialogController.Host() {
              public void chooseFolder() { folderPicker.launch(null); }
              public void useDefaultFolder() { setStatus("Using default save folders"); }
+             public void onThemeChanged() {
+                recreatingForTheme = true;
+                prefs().edit().putBoolean(KEY_REOPEN_SETTINGS, true).apply();
+                recreate();
+             }
              public void onSettingsDismissed() {
                 internalDialogVisible = false;
+                if (recreatingForTheme) return;
                 updateTimerUi();
                 if (mode != Mode.VIDEO && !timelapseRunning && !timelapseFinalizing) startCamera();
             }
@@ -979,6 +1024,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onDestroy() {
+        if (startupDialog != null && startupDialog.isShowing()) startupDialog.dismiss();
         if (recording != null) recording.stop();
         timelapseRunning = false;
         handler.removeCallbacksAndMessages(null);

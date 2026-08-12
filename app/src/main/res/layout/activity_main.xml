@@ -104,13 +104,13 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="@color/ink">
+        android:background="@color/camera_background">
 
         <androidx.camera.view.PreviewView
             android:id="@+id/preview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@color/ink" />
+            android:background="@color/camera_background" />
 
         <TextView
             android:id="@+id/camera_loading"
@@ -153,15 +153,15 @@
             android:paddingHorizontal="24dp">
 
             <ImageButton
-                android:id="@+id/mode"
+                android:id="@+id/gallery"
                 android:layout_width="68dp"
                 android:layout_height="68dp"
                 android:background="@drawable/circle_outline"
-                android:contentDescription="Switch to video mode"
+                android:contentDescription="Open gallery"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
                 android:padding="18dp"
-                android:src="@drawable/ic_video"
+                android:src="@drawable/ic_gallery"
                 android:stateListAnimator="@null"
                 android:tint="@color/ink" />
 
@@ -189,15 +189,15 @@
                 android:layout_weight="1" />
 
             <ImageButton
-                android:id="@+id/gallery"
+                android:id="@+id/mode"
                 android:layout_width="68dp"
                 android:layout_height="68dp"
                 android:background="@drawable/circle_outline"
-                android:contentDescription="Open gallery"
+                android:contentDescription="Switch to video mode"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
                 android:padding="18dp"
-                android:src="@drawable/ic_gallery"
+                android:src="@drawable/ic_video"
                 android:stateListAnimator="@null"
                 android:tint="@color/ink" />
         </LinearLayout>

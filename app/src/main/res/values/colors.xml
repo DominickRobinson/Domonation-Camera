@@ -3,4 +3,6 @@
     <color name="paper">#F5F5EE</color>
     <color name="ink">#111111</color>
     <color name="mid_ink">#555555</color>
+    <color name="camera_background">#111111</color>
+    <color name="splash_background">#FFFFFF</color>
 </resources>

@@ -36,10 +36,12 @@ final class SettingsDialogController {
     private static final String KEY_VOLUME_SHUTTER = "volume_shutter";
     private static final String KEY_GALLERY_ROWS = "gallery_rows";
     private static final String KEY_GALLERY_COLUMNS = "gallery_columns";
+    private static final String KEY_THEME = AppTheme.KEY;
 
     interface Host {
         void chooseFolder();
         void useDefaultFolder();
+        void onThemeChanged();
         void onSettingsDismissed();
     }
 
@@ -54,7 +56,7 @@ final class SettingsDialogController {
     }
 
     void show() {
-        Dialog dialog = new Dialog(activity, android.R.style.Theme_Material_Light_NoActionBar_Fullscreen);
+        Dialog dialog = new Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen);
         LinearLayout page = new LinearLayout(activity);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setBackgroundColor(color(R.color.paper));
@@ -119,14 +121,16 @@ final class SettingsDialogController {
         content.removeAllViews();
         content.setPadding(dp(20), dp(2), dp(20), dp(18));
         if (page == 0) {
+            content.addView(sectionTitle("Appearance"));
+            content.addView(radioSetting(KEY_THEME,
+                    new String[]{"Auto", "Light", "Dark"},
+                    new int[]{AppTheme.AUTO, AppTheme.LIGHT, AppTheme.DARK},
+                    prefs.getInt(KEY_THEME, AppTheme.AUTO)));
             content.addView(sectionTitle("General"));
             content.addView(checkSetting("Review before save", KEY_REVIEW, false));
             content.addView(checkSetting("Volume buttons control shutter", KEY_VOLUME_SHUTTER, true));
             content.addView(sectionTitle("Gallery grid"));
-            content.addView(note("Rows per page"));
-            content.addView(radioSetting(KEY_GALLERY_ROWS, prefs.getInt(KEY_GALLERY_ROWS, 3)));
-            content.addView(note("Columns per page"));
-            content.addView(radioSetting(KEY_GALLERY_COLUMNS, prefs.getInt(KEY_GALLERY_COLUMNS, 3)));
+            content.addView(galleryGridSetting());
             content.addView(sectionTitle("Save location"));
             TextView location = note(prefs.getString(KEY_TREE, null) == null ?
                     "Pictures/PaperCamera and Movies/PaperCamera" : "Selected folder (photos and videos)");
@@ -190,9 +194,39 @@ final class SettingsDialogController {
         if (checkedId != View.NO_ID) group.check(checkedId);
         group.setOnCheckedChangeListener((radioGroup, id) -> {
             RadioButton checked = radioGroup.findViewById(id);
-            if (checked != null) prefs.edit().putInt(key, (int) checked.getTag()).apply();
+            if (checked != null) {
+                prefs.edit().putInt(key, (int) checked.getTag()).apply();
+                if (KEY_THEME.equals(key)) host.onThemeChanged();
+            }
         });
         return group;
+    }
+
+    private View galleryGridSetting() {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.addView(compactGridChoice("Rows", KEY_GALLERY_ROWS),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        View divider = new View(activity);
+        divider.setBackgroundColor(color(R.color.mid_ink));
+        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(
+                dp(1), ViewGroup.LayoutParams.MATCH_PARENT);
+        dividerParams.setMargins(dp(6), 0, dp(6), 0);
+        row.addView(divider, dividerParams);
+        row.addView(compactGridChoice("Columns", KEY_GALLERY_COLUMNS),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View compactGridChoice(String title, String key) {
+        LinearLayout column = new LinearLayout(activity);
+        column.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = note(title);
+        heading.setGravity(Gravity.CENTER);
+        heading.setPadding(0, 0, 0, 0);
+        column.addView(heading, matchHeight(28));
+        column.addView(radioSetting(key, prefs.getInt(key, 3)), matchHeight(44));
+        return column;
     }
 
     private View customNumberSetting(String key, String customKey, String[] labels, int[] values,
@@ -317,7 +351,7 @@ final class SettingsDialogController {
     private TextView label(String text) {
         TextView view = new TextView(activity);
         view.setText(text);
-        view.setTextColor(Color.BLACK);
+        view.setTextColor(color(R.color.ink));
         view.setTextSize(17);
         view.setPadding(0, 14, 0, 4);
         return view;

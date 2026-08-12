@@ -103,8 +103,13 @@ public final class GalleryActivity extends ComponentActivity {
                 }
             });
 
+    @Override protected void attachBaseContext(android.content.Context base) {
+        super.attachBaseContext(AppTheme.wrap(base));
+    }
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        AppTheme.applySystemBars(this);
         getWindow().setWindowAnimations(0);
         mediaRepository = new GalleryMediaRepository(this);
         mediaActions = new GalleryMediaActions(this);
