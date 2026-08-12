@@ -44,18 +44,3 @@ as 30-day workflow artifacts.
 The app selects the largest nonzero thumbnail size up to 512×512 reported by the rear camera and requests it through Camera2. Some vendor camera implementations may ignore that request; the status line after each capture verifies the actual output instead of assuming success.
 
 Timelapse saves every JPEG frame first, then creates an H.264 MP4 at the selected playback FPS. Encoding runs after capture stops; if video encoding fails, the original JPEG sequence remains saved.
-# Automatic releases
-
-Pushing a commit to `main` automatically publishes a signed APK when the
-`versionName` in `app/build.gradle.kts` has not been released before. Increase
-both `versionCode` and `versionName` for each release.
-
-The repository must define these GitHub Actions secrets:
-
-- `SIGNING_KEY_BASE64`: the release keystore encoded as base64
-- `SIGNING_STORE_PASSWORD`: the keystore password
-- `SIGNING_KEY_ALIAS`: the signing-key alias
-- `SIGNING_KEY_PASSWORD`: the signing-key password
-
-The release keystore itself must never be committed. Keep a secure backup: all
-future APK updates must be signed with the same key.
