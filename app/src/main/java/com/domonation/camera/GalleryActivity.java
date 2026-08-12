@@ -32,8 +32,6 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
-import android.widget.VideoView;
 
 import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
@@ -82,6 +80,7 @@ public final class GalleryActivity extends ComponentActivity {
     private TextView nextButton;
     private int page;
     private GalleryMediaItem openItem;
+    private VideoPlayerView openVideo;
     private boolean loading;
     private ArrayList<GalleryMediaItem> pendingSystemDelete;
 
@@ -95,11 +94,8 @@ public final class GalleryActivity extends ComponentActivity {
                 if (result.getResultCode() == Activity.RESULT_OK) {
                     selected.clear();
                     openItem = null;
-                    Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show();
                     showGrid();
                     loadItems();
-                } else if (pending != null) {
-                    Toast.makeText(this, "Delete cancelled", Toast.LENGTH_SHORT).show();
                 }
             });
 
@@ -318,6 +314,8 @@ public final class GalleryActivity extends ComponentActivity {
     }
 
     private void showViewer(GalleryMediaItem item) {
+        if (openVideo != null) openVideo.release();
+        openVideo = null;
         openItem = item;
         root.removeAllViews();
         LinearLayout viewerHeader = new LinearLayout(this);
@@ -341,10 +339,9 @@ public final class GalleryActivity extends ComponentActivity {
         root.addView(viewerHeader, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
 
         if (item.isVideo()) {
-            VideoView video = new VideoView(this);
-            video.setBackgroundColor(Color.BLACK);
-            video.setVideoURI(item.uri);
-            video.setOnPreparedListener(player -> { player.setLooping(false); video.start(); });
+            VideoPlayerView video = new VideoPlayerView(this);
+            openVideo = video;
+            video.setVideo(item.uri, false);
             root.addView(video, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         } else {
             ZoomImageView image = new ZoomImageView(this);
@@ -353,17 +350,35 @@ public final class GalleryActivity extends ComponentActivity {
                 Bitmap ready = mediaRepository.loadImage(item.uri);
                 runOnUiThread(() -> { if (openItem == item && ready != null) image.setImageBitmap(ready); });
             });
-            TextView hint = new TextView(this);
-            hint.setText("Pinch to zoom · double tap to reset");
-            hint.setGravity(Gravity.CENTER);
-            hint.setTextColor(ink());
-            hint.setTextSize(14);
-            hint.setBackgroundResource(R.drawable.top_rule);
-            root.addView(hint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
         }
+        addViewerNavigation(item);
+    }
+
+    private void addViewerNavigation(GalleryMediaItem item) {
+        int index = items.indexOf(item);
+        LinearLayout navigation = new LinearLayout(this);
+        navigation.setGravity(Gravity.CENTER);
+        navigation.setBackgroundResource(R.drawable.top_rule);
+        TextView previous = textButton("‹", "Previous item");
+        TextView position = new TextView(this);
+        position.setText((index + 1) + " / " + items.size());
+        position.setTextColor(ink());
+        position.setTextSize(15);
+        position.setGravity(Gravity.CENTER);
+        TextView next = textButton("›", "Next item");
+        previous.setVisibility(index > 0 ? View.VISIBLE : View.INVISIBLE);
+        next.setVisibility(index + 1 < items.size() ? View.VISIBLE : View.INVISIBLE);
+        previous.setOnClickListener(v -> { if (index > 0) showViewer(items.get(index - 1)); });
+        next.setOnClickListener(v -> { if (index + 1 < items.size()) showViewer(items.get(index + 1)); });
+        navigation.addView(previous, new LinearLayout.LayoutParams(dp(88), dp(52)));
+        navigation.addView(position, new LinearLayout.LayoutParams(0, dp(52), 1));
+        navigation.addView(next, new LinearLayout.LayoutParams(dp(88), dp(52)));
+        root.addView(navigation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
     }
 
     private void showGrid() {
+        if (openVideo != null) openVideo.release();
+        openVideo = null;
         openItem = null;
         root.removeAllViews();
         buildGallery();
@@ -411,7 +426,7 @@ public final class GalleryActivity extends ComponentActivity {
                     deletePermission.launch(new IntentSenderRequest.Builder(request.getIntentSender()).build());
                     return;
                 } catch (RuntimeException error) {
-                    Toast.makeText(this, "Unable to request deletion", Toast.LENGTH_SHORT).show();
+                    // Leave the item in place when Android cannot present its delete request.
                 }
             }
             finishDirectDelete(chosen.size(), directlyRemoved);
@@ -423,8 +438,6 @@ public final class GalleryActivity extends ComponentActivity {
     private void finishDirectDelete(int requested, int removed) {
         selected.clear();
         openItem = null;
-        Toast.makeText(this, removed == requested ? "Deleted" : "Some items could not be deleted",
-                Toast.LENGTH_SHORT).show();
         showGrid();
         loadItems();
     }

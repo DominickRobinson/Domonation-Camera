@@ -123,19 +123,6 @@
             android:textColor="@color/paper"
             android:textSize="24sp" />
 
-        <TextView
-            android:id="@+id/status"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_gravity="bottom|center_horizontal"
-            android:background="@color/paper"
-            android:gravity="center"
-            android:maxLines="1"
-            android:minWidth="180dp"
-            android:paddingHorizontal="8dp"
-            android:textColor="@color/mid_ink"
-            android:textSize="13sp"
-            android:visibility="gone" />
     </FrameLayout>
 
     <FrameLayout

@@ -36,22 +36,38 @@ final class GalleryMediaRepository {
     }
 
     Bitmap loadThumbnail(GalleryMediaItem item) {
+        if (item.isVideo()) {
+            Bitmap frame = loadVideoFrame(item.uri);
+            if (frame != null) return frame;
+        }
         try {
             if (Build.VERSION.SDK_INT >= 29) {
                 return resolver.loadThumbnail(item.uri, new Size(360, 360), null);
             }
-            if (item.isVideo()) {
-                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-                try {
-                    retriever.setDataSource(context, item.uri);
-                    return retriever.getFrameAtTime(0);
-                } finally {
-                    retriever.release();
-                }
-            }
             return loadImage(item.uri);
         } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    private Bitmap loadVideoFrame(Uri uri) {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            retriever.setDataSource(context, uri);
+            Bitmap frame;
+            if (Build.VERSION.SDK_INT >= 27) {
+                frame = retriever.getScaledFrameAtTime(1_000_000,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 360, 360);
+            } else {
+                frame = retriever.getFrameAtTime(1_000_000,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+            }
+            if (frame == null) frame = retriever.getFrameAtTime(-1);
+            return frame;
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            try { retriever.release(); } catch (Exception ignored) { }
         }
     }
 

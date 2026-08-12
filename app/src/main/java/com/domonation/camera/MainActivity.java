@@ -42,7 +42,6 @@ import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.VideoView;
 
 import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
@@ -67,13 +66,11 @@ import androidx.camera.video.VideoRecordEvent;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.documentfile.provider.DocumentFile;
-import androidx.exifinterface.media.ExifInterface;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
@@ -107,7 +104,6 @@ public final class MainActivity extends ComponentActivity {
     private static final String KEY_GALLERY_COLUMNS = "gallery_columns";
 
     private PreviewView previewView;
-    private TextView statusView;
     private TextView loadingView;
     private ImageButton shutterButton;
     private ImageButton flashButton;
@@ -115,6 +111,7 @@ public final class MainActivity extends ComponentActivity {
     private ImageButton timerButton;
     private ImageButton zoomToggleButton;
     private ImageButton exposureToggleButton;
+    private ImageButton galleryButton;
     private TextView timerBadge;
     private View captureControls;
     private View zoomControls;
@@ -143,8 +140,11 @@ public final class MainActivity extends ComponentActivity {
     private int flashMode = ImageCapture.FLASH_MODE_OFF;
     private Size embeddedThumbnailSize = new Size(0, 0);
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable hideStatusRunnable = () -> {
-        if (statusView != null) statusView.setVisibility(View.GONE);
+    private final Runnable restoreGalleryIconRunnable = () -> {
+        if (galleryButton != null) {
+            galleryButton.setImageResource(R.drawable.ic_gallery);
+            galleryButton.setContentDescription("Open gallery");
+        }
     };
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor();
     private final ArrayList<File> timelapseFrameFiles = new ArrayList<>();
@@ -156,7 +156,6 @@ public final class MainActivity extends ComponentActivity {
     private boolean recreatingForTheme;
     private Dialog startupDialog;
     private int timelapseFrames;
-    private boolean lastSaveUsedFallback;
     private MediaStorage mediaStorage;
     private CountDownTimer shutterTimer;
     private int targetRotation = Surface.ROTATION_0;
@@ -165,12 +164,11 @@ public final class MainActivity extends ComponentActivity {
 
     private final ActivityResultLauncher<String> cameraPermission =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
-                if (granted) startCamera(); else setStatus("Camera permission is required");
+                if (granted) startCamera();
             });
 
     private final ActivityResultLauncher<String> audioPermission =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
-                if (!granted) setStatus("Audio denied · recording silently");
                 startVideo();
             });
 
@@ -180,7 +178,6 @@ public final class MainActivity extends ComponentActivity {
                 getContentResolver().takePersistableUriPermission(uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 prefs().edit().putString(KEY_TREE, uri.toString()).apply();
-                setStatus("Save folder selected");
             });
 
     @Override protected void attachBaseContext(android.content.Context base) {
@@ -198,7 +195,6 @@ public final class MainActivity extends ComponentActivity {
         mediaStorage = new MediaStorage(this);
 
         previewView = findViewById(R.id.preview);
-        statusView = findViewById(R.id.status);
         loadingView = findViewById(R.id.camera_loading);
         shutterButton = findViewById(R.id.shutter);
         flashButton = findViewById(R.id.flash);
@@ -207,6 +203,7 @@ public final class MainActivity extends ComponentActivity {
         timerBadge = findViewById(R.id.timer_badge);
         zoomToggleButton = findViewById(R.id.zoom_toggle);
         exposureToggleButton = findViewById(R.id.exposure_toggle);
+        galleryButton = findViewById(R.id.gallery);
         captureControls = findViewById(R.id.capture_controls);
         zoomControls = findViewById(R.id.zoom_controls);
         exposureControls = findViewById(R.id.exposure_controls);
@@ -218,7 +215,7 @@ public final class MainActivity extends ComponentActivity {
         int[] rotatingIds = {R.id.timer_toggle, R.id.timer_badge, R.id.zoom_toggle,
                 R.id.exposure_toggle, R.id.settings, R.id.mode, R.id.shutter, R.id.flash, R.id.gallery,
                 R.id.zoom_out, R.id.zoom_label, R.id.zoom_in, R.id.exposure_down,
-                R.id.exposure_label, R.id.exposure_up, R.id.camera_loading, R.id.status};
+                R.id.exposure_label, R.id.exposure_up, R.id.camera_loading};
         for (int id : rotatingIds) orientationViews.add(findViewById(id));
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         previewView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
@@ -266,7 +263,7 @@ public final class MainActivity extends ComponentActivity {
         exposureToggleButton.setOnClickListener(v -> setControlPanel(
                 controlPanel == ControlPanel.EXPOSURE ? ControlPanel.NONE : ControlPanel.EXPOSURE));
         flashButton.setOnClickListener(v -> cycleFlash());
-        findViewById(R.id.gallery).setOnClickListener(v ->
+        galleryButton.setOnClickListener(v ->
                 startActivity(new Intent(this, GalleryActivity.class)));
         shutterButton.setOnClickListener(v -> onShutter());
         previewView.setOnTouchListener(this::handlePreviewTouch);
@@ -400,7 +397,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void startCamera() {
-        setStatus("Starting camera…");
+        loadingView.setVisibility(View.VISIBLE);
         shutterButton.setEnabled(false);
         ListenableFuture<ProcessCameraProvider> future = ProcessCameraProvider.getInstance(this);
         Executor main = ContextCompat.getMainExecutor(this);
@@ -408,9 +405,7 @@ public final class MainActivity extends ComponentActivity {
             try {
                 cameraProvider = future.get();
                 bindCamera();
-            } catch (Exception error) {
-                setStatus("Camera error: " + error.getMessage());
-            }
+            } catch (Exception ignored) { loadingView.setVisibility(View.GONE); }
         }, main);
     }
 
@@ -449,7 +444,7 @@ public final class MainActivity extends ComponentActivity {
         configureExposure();
         configureZoom();
         shutterButton.setEnabled(true);
-        setStatus("Ready · tap viewfinder to focus");
+        loadingView.setVisibility(View.GONE);
     }
 
     private void configureExposure() {
@@ -473,7 +468,6 @@ public final class MainActivity extends ComponentActivity {
         int index = range.getLower() + progress;
         camera.getCameraControl().setExposureCompensationIndex(index);
         exposureLabel.setText((index >= 0 ? "+" : "") + index);
-        setStatus("Exposure " + (index >= 0 ? "+" : "") + index);
     }
 
     private void stepExposure(boolean increase) {
@@ -597,14 +591,13 @@ public final class MainActivity extends ComponentActivity {
     private void onShutter() {
         if (controlPanel != ControlPanel.NONE) setControlPanel(ControlPanel.NONE);
         if (timelapseFinalizing) {
-            setStatus("Creating timelapse video…");
             return;
         }
         if (shutterTimer != null) {
             shutterTimer.cancel();
             shutterTimer = null;
             shutterButton.setEnabled(true);
-            setStatus("Timer cancelled");
+            updateTimerUi();
             return;
         }
         if (mode == Mode.VIDEO) {
@@ -657,11 +650,13 @@ public final class MainActivity extends ComponentActivity {
                 int remaining = Math.max(1, (int) Math.ceil((remainingMs - 150) / 1000.0));
                 if (remaining != shown) {
                     shown = remaining;
-                    setStatus("Timer · " + remaining);
+                    timerBadge.setText(String.valueOf(remaining));
+                    timerBadge.setVisibility(View.VISIBLE);
                 }
             }
             @Override public void onFinish() {
                 shutterTimer = null;
+                updateTimerUi();
                 action.run();
             }
         }.start();
@@ -704,10 +699,9 @@ public final class MainActivity extends ComponentActivity {
         imageCapture.takePicture(output, ContextCompat.getMainExecutor(this), new ImageCapture.OnImageSavedCallback() {
             @Override public void onImageSaved(@NonNull ImageCapture.OutputFileResults result) {
                 if (allowReview && prefs().getBoolean(KEY_REVIEW, false)) showPhotoReview(temp);
-                else saveCompletedCapture(temp, "image/jpeg", true);
+                else saveCompletedCapture(temp, "image/jpeg");
             }
             @Override public void onError(@NonNull ImageCaptureException error) {
-                setStatus("Capture failed: " + error.getMessage());
                 shutterButton.setEnabled(true);
             }
         });
@@ -719,11 +713,10 @@ public final class MainActivity extends ComponentActivity {
         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
         image.setImageURI(Uri.fromFile(temp));
         showFullScreenReview("Review photo", image,
-                () -> saveCompletedCapture(temp, "image/jpeg", true),
+                () -> saveCompletedCapture(temp, "image/jpeg"),
                 () -> {
                     temp.delete();
                     shutterButton.setEnabled(true);
-                    setStatus("Ready · tap viewfinder to focus");
                 });
     }
 
@@ -737,7 +730,6 @@ public final class MainActivity extends ComponentActivity {
             pending = pending.withAudioEnabled();
         }
         shutterButton.setContentDescription("Stop video");
-        setStatus("Recording…");
         recording = pending.start(ContextCompat.getMainExecutor(this), event -> {
             if (event instanceof VideoRecordEvent.Finalize) {
                 VideoRecordEvent.Finalize done = (VideoRecordEvent.Finalize) event;
@@ -745,23 +737,20 @@ public final class MainActivity extends ComponentActivity {
                 shutterButton.setContentDescription("Start video");
                 if (done.hasError()) {
                     temp.delete();
-                    setStatus("Video failed: " + done.getError());
                 } else if (prefs().getBoolean(KEY_REVIEW, false)) showVideoReview(temp);
-                else saveCompletedCapture(temp, "video/mp4", false);
+                else saveCompletedCapture(temp, "video/mp4");
             }
         });
     }
 
     private void showVideoReview(File temp) {
-        VideoView video = new VideoView(this);
-        video.setVideoURI(Uri.fromFile(temp));
-        video.setOnPreparedListener(player -> { player.setLooping(true); video.start(); });
+        VideoPlayerView video = new VideoPlayerView(this);
+        video.setVideo(Uri.fromFile(temp), true);
         showFullScreenReview("Review video", video,
-                () -> saveCompletedCapture(temp, "video/mp4", false),
+                () -> saveCompletedCapture(temp, "video/mp4"),
                 () -> {
                     temp.delete();
                     shutterButton.setEnabled(true);
-                    setStatus("Ready · tap viewfinder to focus");
                 });
     }
 
@@ -801,7 +790,9 @@ public final class MainActivity extends ComponentActivity {
         page.addView(actions, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(80)));
 
         boolean[] resolved = {false};
-        Runnable stopMedia = () -> { if (media instanceof VideoView) ((VideoView) media).stopPlayback(); };
+        Runnable stopMedia = () -> {
+            if (media instanceof VideoPlayerView) ((VideoPlayerView) media).release();
+        };
         close.setOnClickListener(v -> {
             if (!resolved[0]) { resolved[0] = true; stopMedia.run(); discard.run(); }
             dialog.dismiss();
@@ -872,9 +863,7 @@ public final class MainActivity extends ComponentActivity {
                     @Override public void onImageSaved(@NonNull ImageCapture.OutputFileResults result) {
                         timelapseCaptureInFlight = false;
                         timelapseFrames = before + 1;
-                        saveFile(temp, "image/jpeg");
                         timelapseFrameFiles.add(temp);
-                        setStatus("Timelapse · " + timelapseFrames + " frames");
                         if (timelapseRunning) {
                             int delay = prefs().getInt(KEY_LAPSE, 5);
                             handler.postDelayed(timelapseCaptureRunnable, delay * 1000L);
@@ -883,7 +872,6 @@ public final class MainActivity extends ComponentActivity {
                     @Override public void onError(@NonNull ImageCaptureException error) {
                         timelapseCaptureInFlight = false;
                         temp.delete();
-                        setStatus("Timelapse frame failed");
                         if (timelapseRunning) handler.postDelayed(timelapseCaptureRunnable, 1000);
                         else finalizeTimelapse();
                     }
@@ -895,24 +883,20 @@ public final class MainActivity extends ComponentActivity {
         handler.removeCallbacks(timelapseCaptureRunnable);
         if (shutterTimer != null) shutterTimer.cancel();
         shutterButton.setContentDescription("Start timelapse");
-        if (timelapseCaptureInFlight) setStatus("Finishing final frame…");
-        else finalizeTimelapse();
+        if (!timelapseCaptureInFlight) finalizeTimelapse();
     }
 
     private void finalizeTimelapse() {
         if (timelapseFinalizing) return;
         if (timelapseFrameFiles.isEmpty()) {
             shutterButton.setEnabled(true);
-            setStatus("Timelapse stopped · no frames captured");
             return;
         }
         timelapseFinalizing = true;
         shutterButton.setEnabled(false);
-        int frameCount = timelapseFrameFiles.size();
         int fps = prefs().getInt(KEY_LAPSE_FPS, 24);
         ArrayList<File> frames = new ArrayList<>(timelapseFrameFiles);
         File video = new File(getCacheDir(), newName("TIMELAPSE", ".mp4"));
-        setStatus("Creating " + fps + " FPS timelapse video…");
         backgroundExecutor.execute(() -> {
             Exception failure = null;
             try {
@@ -924,29 +908,18 @@ public final class MainActivity extends ComponentActivity {
             Exception result = failure;
             handler.post(() -> {
                 boolean videoSaved = result == null && video.length() > 0 && saveFile(video, "video/mp4");
-                if (videoSaved) video.delete();
+                video.delete();
                 for (File frame : frames) frame.delete();
                 timelapseFrameFiles.clear();
                 timelapseFinalizing = false;
                 shutterButton.setEnabled(true);
-                if (videoSaved) {
-                    setStatus("Saved · " + frameCount + " JPEGs + " + fps + " FPS video");
-                } else {
-                    setStatus("JPEGs saved · timelapse video failed");
-                }
             });
         });
     }
 
-    private void saveCompletedCapture(File temp, String mime, boolean verifyThumbnail) {
+    private void saveCompletedCapture(File temp, String mime) {
         boolean saved = saveFile(temp, mime);
-        if (!saved) setStatus("Save failed · capture retained temporarily");
-        else if (verifyThumbnail) {
-            boolean hasThumbnail = false;
-            try { hasThumbnail = new ExifInterface(temp).hasThumbnail(); } catch (IOException ignored) {}
-            String result = hasThumbnail ? "Saved · EXIF thumbnail verified" : "Saved · no EXIF thumbnail found";
-            setStatus(lastSaveUsedFallback ? result + " · default folder used" : result);
-        } else setStatus(lastSaveUsedFallback ? "Saved · default folder used" : "Saved");
+        if (saved && mime.startsWith("image/")) showGallerySavedCheck();
         if (saved) temp.delete();
         shutterButton.setEnabled(true);
     }
@@ -955,7 +928,6 @@ public final class MainActivity extends ComponentActivity {
         String treeValue = prefs().getString(KEY_TREE, null);
         MediaStorage.SaveResult result = mediaStorage.save(source, mime,
                 treeValue == null ? null : Uri.parse(treeValue));
-        lastSaveUsedFallback = result.usedDefaultFallback;
         return result.saved;
     }
 
@@ -963,7 +935,7 @@ public final class MainActivity extends ComponentActivity {
         internalDialogVisible = true;
         new SettingsDialogController(this, prefs(), new SettingsDialogController.Host() {
              public void chooseFolder() { folderPicker.launch(null); }
-             public void useDefaultFolder() { setStatus("Using default save folders"); }
+             public void useDefaultFolder() { }
              public void onThemeChanged() {
                 recreatingForTheme = true;
                 prefs().edit().putBoolean(KEY_REOPEN_SETTINGS, true).apply();
@@ -1000,27 +972,11 @@ public final class MainActivity extends ComponentActivity {
         return prefix + "_" + new SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(new Date()) + suffix;
     }
 
-    private void setStatus(String text) {
-        handler.removeCallbacks(hideStatusRunnable);
-        if (text.startsWith("Starting camera")) {
-            statusView.setVisibility(View.GONE);
-            loadingView.setVisibility(View.VISIBLE);
-            return;
-        }
-        if (text.startsWith("Ready")) {
-            statusView.setVisibility(View.GONE);
-            loadingView.setVisibility(View.GONE);
-            return;
-        }
-        loadingView.setVisibility(View.GONE);
-        statusView.setText(text);
-        statusView.setVisibility(View.VISIBLE);
-        String lower = text.toLowerCase(Locale.US);
-        boolean persistent = text.startsWith("Timer ·") || text.startsWith("Recording") ||
-                text.startsWith("Timelapse ·") || text.startsWith("Creating") ||
-                text.startsWith("Finishing") || lower.contains("error") ||
-                lower.contains("failed") || lower.contains("required");
-        if (!persistent) handler.postDelayed(hideStatusRunnable, 3000);
+    private void showGallerySavedCheck() {
+        handler.removeCallbacks(restoreGalleryIconRunnable);
+        galleryButton.setImageResource(R.drawable.ic_check);
+        galleryButton.setContentDescription("Photo saved");
+        handler.postDelayed(restoreGalleryIconRunnable, 1200);
     }
 
     @Override protected void onDestroy() {
