@@ -64,26 +64,12 @@ public final class GalleryActivity extends ComponentActivity {
     private static final String KEY_GALLERY_ROWS = "gallery_rows";
     private static final String KEY_GALLERY_COLUMNS = "gallery_columns";
 
-    private static final class MediaItem {
-        final Uri uri;
-        final String name;
-        final String mime;
-        final long modified;
-
-        MediaItem(Uri uri, String name, String mime, long modified) {
-            this.uri = uri;
-            this.name = name;
-            this.mime = mime == null ? "application/octet-stream" : mime;
-            this.modified = modified;
-        }
-
-        boolean isVideo() { return mime.startsWith("video/"); }
-    }
-
-    private final ArrayList<MediaItem> items = new ArrayList<>();
+    private final ArrayList<GalleryMediaItem> items = new ArrayList<>();
     private final Set<Uri> selected = new LinkedHashSet<>();
     private final Map<Uri, FrameLayout> visibleCells = new HashMap<>();
     private final ExecutorService loader = Executors.newFixedThreadPool(2);
+    private GalleryMediaRepository mediaRepository;
+    private GalleryMediaActions mediaActions;
     private LinearLayout root;
     private LinearLayout header;
     private GridLayout grid;
@@ -95,16 +81,16 @@ public final class GalleryActivity extends ComponentActivity {
     private TextView previousButton;
     private TextView nextButton;
     private int page;
-    private MediaItem openItem;
+    private GalleryMediaItem openItem;
     private boolean loading;
-    private ArrayList<MediaItem> pendingSystemDelete;
+    private ArrayList<GalleryMediaItem> pendingSystemDelete;
 
     private final ActivityResultLauncher<String[]> mediaPermission =
             registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> loadItems());
 
     private final ActivityResultLauncher<IntentSenderRequest> deletePermission =
             registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), result -> {
-                ArrayList<MediaItem> pending = pendingSystemDelete;
+                ArrayList<GalleryMediaItem> pending = pendingSystemDelete;
                 pendingSystemDelete = null;
                 if (result.getResultCode() == Activity.RESULT_OK) {
                     selected.clear();
@@ -120,6 +106,8 @@ public final class GalleryActivity extends ComponentActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().setWindowAnimations(0);
+        mediaRepository = new GalleryMediaRepository(this);
+        mediaActions = new GalleryMediaActions(this);
         buildGallery();
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
@@ -202,10 +190,9 @@ public final class GalleryActivity extends ComponentActivity {
         loading = true;
         title.setText("Loading…");
         loader.execute(() -> {
-            ArrayList<MediaItem> found = new ArrayList<>();
             String tree = prefs().getString(KEY_TREE, null);
-            if (tree == null) loadDefaultMedia(found); else loadTreeMedia(found, Uri.parse(tree));
-            found.sort(Comparator.comparingLong((MediaItem item) -> item.modified).reversed());
+            ArrayList<GalleryMediaItem> found = mediaRepository.load(
+                    tree == null ? null : Uri.parse(tree));
             runOnUiThread(() -> {
                 items.clear();
                 items.addAll(found);
@@ -214,37 +201,6 @@ public final class GalleryActivity extends ComponentActivity {
                 renderPage();
             });
         });
-    }
-
-    private void loadTreeMedia(List<MediaItem> result, Uri treeUri) {
-        DocumentFile folder = DocumentFile.fromTreeUri(this, treeUri);
-        if (folder == null || !folder.canRead()) return;
-        for (DocumentFile file : folder.listFiles()) {
-            String mime = file.getType();
-            if (file.isFile() && mime != null && (mime.startsWith("image/") || mime.startsWith("video/"))) {
-                result.add(new MediaItem(file.getUri(), safeName(file.getName()), mime, file.lastModified()));
-            }
-        }
-    }
-
-    private void loadDefaultMedia(List<MediaItem> result) {
-        queryCollection(result, MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                MediaStore.Images.Media.RELATIVE_PATH + "=?", new String[]{"Pictures/PaperCamera/"});
-        queryCollection(result, MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                MediaStore.Video.Media.RELATIVE_PATH + "=?", new String[]{"Movies/PaperCamera/"});
-    }
-
-    private void queryCollection(List<MediaItem> result, Uri collection, String selection, String[] args) {
-        String[] projection = {MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME,
-                MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.DATE_MODIFIED};
-        try (Cursor cursor = getContentResolver().query(collection, projection, selection, args, null)) {
-            if (cursor == null) return;
-            while (cursor.moveToNext()) {
-                long id = cursor.getLong(0);
-                result.add(new MediaItem(ContentUris.withAppendedId(collection, id),
-                        safeName(cursor.getString(1)), cursor.getString(2), cursor.getLong(3) * 1000L));
-            }
-        } catch (RuntimeException ignored) { }
     }
 
     private void renderPage() {
@@ -278,7 +234,7 @@ public final class GalleryActivity extends ComponentActivity {
         return spacer;
     }
 
-    private View mediaCell(MediaItem item) {
+    private View mediaCell(GalleryMediaItem item) {
         FrameLayout cell = new FrameLayout(this);
         cell.setBackgroundColor(ink());
         GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
@@ -313,27 +269,14 @@ public final class GalleryActivity extends ComponentActivity {
         return cell;
     }
 
-    private void loadThumbnail(MediaItem item, ImageView target) {
+    private void loadThumbnail(GalleryMediaItem item, ImageView target) {
         loader.execute(() -> {
-            Bitmap bitmap = null;
-            try {
-                if (Build.VERSION.SDK_INT >= 29) {
-                    bitmap = getContentResolver().loadThumbnail(item.uri, new Size(360, 360), null);
-                } else if (item.isVideo()) {
-                    MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-                    retriever.setDataSource(this, item.uri);
-                    bitmap = retriever.getFrameAtTime(0);
-                    retriever.release();
-                } else try (InputStream input = getContentResolver().openInputStream(item.uri)) {
-                    bitmap = BitmapFactory.decodeStream(input);
-                }
-            } catch (Exception ignored) { }
-            Bitmap ready = bitmap;
+            Bitmap ready = mediaRepository.loadThumbnail(item);
             runOnUiThread(() -> { if (ready != null && target.isAttachedToWindow()) target.setImageBitmap(ready); });
         });
     }
 
-    private void toggleSelection(MediaItem item) {
+    private void toggleSelection(GalleryMediaItem item) {
         if (!selected.add(item.uri)) selected.remove(item.uri);
         FrameLayout cell = visibleCells.get(item.uri);
         if (cell != null) updateCellSelection(item, cell);
@@ -343,7 +286,7 @@ public final class GalleryActivity extends ComponentActivity {
 
     private void clearSelection() {
         selected.clear();
-        for (MediaItem item : items) {
+        for (GalleryMediaItem item : items) {
             FrameLayout cell = visibleCells.get(item.uri);
             if (cell != null) updateCellSelection(item, cell);
         }
@@ -351,7 +294,7 @@ public final class GalleryActivity extends ComponentActivity {
         updateActions();
     }
 
-    private void updateCellSelection(MediaItem item, FrameLayout cell) {
+    private void updateCellSelection(GalleryMediaItem item, FrameLayout cell) {
         for (int i = cell.getChildCount() - 1; i >= 0; i--) {
             if ("selection".equals(cell.getChildAt(i).getTag())) cell.removeViewAt(i);
         }
@@ -369,7 +312,7 @@ public final class GalleryActivity extends ComponentActivity {
         cell.setContentDescription(item.name + (active ? ", selected" : ""));
     }
 
-    private void showViewer(MediaItem item) {
+    private void showViewer(GalleryMediaItem item) {
         openItem = item;
         root.removeAllViews();
         LinearLayout viewerHeader = new LinearLayout(this);
@@ -399,14 +342,10 @@ public final class GalleryActivity extends ComponentActivity {
             video.setOnPreparedListener(player -> { player.setLooping(false); video.start(); });
             root.addView(video, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         } else {
-            ZoomImageView image = new ZoomImageView();
+            ZoomImageView image = new ZoomImageView(this);
             root.addView(image, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
             loader.execute(() -> {
-                Bitmap bitmap = null;
-                try (InputStream input = getContentResolver().openInputStream(item.uri)) {
-                    bitmap = BitmapFactory.decodeStream(input);
-                } catch (Exception ignored) { }
-                Bitmap ready = bitmap;
+                Bitmap ready = mediaRepository.loadImage(item.uri);
                 runOnUiThread(() -> { if (openItem == item && ready != null) image.setImageBitmap(ready); });
             });
             TextView hint = new TextView(this);
@@ -426,37 +365,20 @@ public final class GalleryActivity extends ComponentActivity {
         renderPage();
     }
 
-    private List<MediaItem> currentSelection() {
-        ArrayList<MediaItem> result = new ArrayList<>();
-        for (MediaItem item : items) if (selected.contains(item.uri)) result.add(item);
+    private List<GalleryMediaItem> currentSelection() {
+        ArrayList<GalleryMediaItem> result = new ArrayList<>();
+        for (GalleryMediaItem item : items) if (selected.contains(item.uri)) result.add(item);
         return result;
     }
 
     private void shareSelected() { share(currentSelection()); }
 
-    private void share(List<MediaItem> chosen) {
+    private void share(List<GalleryMediaItem> chosen) {
         if (chosen.isEmpty()) return;
-        ArrayList<Uri> uris = new ArrayList<>();
-        for (MediaItem item : chosen) uris.add(item.uri);
-        Intent intent = new Intent(chosen.size() == 1 ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE);
-        intent.setType(commonMime(chosen));
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        if (chosen.size() == 1) intent.putExtra(Intent.EXTRA_STREAM, uris.get(0));
-        else intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
-        ClipData clip = ClipData.newUri(getContentResolver(), chosen.get(0).name, chosen.get(0).uri);
-        for (int i = 1; i < chosen.size(); i++) clip.addItem(new ClipData.Item(chosen.get(i).uri));
-        intent.setClipData(clip);
-        startActivity(Intent.createChooser(intent, "Share media"));
+        startActivity(Intent.createChooser(mediaActions.shareIntent(chosen), "Share media"));
     }
 
-    private String commonMime(List<MediaItem> chosen) {
-        boolean image = false, video = false;
-        for (MediaItem item : chosen) { if (item.isVideo()) video = true; else image = true; }
-        if (image && video) return "*/*";
-        return video ? "video/*" : "image/*";
-    }
-
-    private void confirmDelete(List<MediaItem> chosen) {
+    private void confirmDelete(List<GalleryMediaItem> chosen) {
         if (chosen.isEmpty()) return;
         new AlertDialog.Builder(this)
                 .setTitle(chosen.size() == 1 ? "Delete this item?" : "Delete " + chosen.size() + " items?")
@@ -466,18 +388,18 @@ public final class GalleryActivity extends ComponentActivity {
                 .show();
     }
 
-    private void delete(List<MediaItem> chosen) {
+    private void delete(List<GalleryMediaItem> chosen) {
         if (Build.VERSION.SDK_INT >= 30) {
-            ArrayList<MediaItem> mediaItems = new ArrayList<>();
-            ArrayList<MediaItem> directItems = new ArrayList<>();
-            for (MediaItem item : chosen) {
+            ArrayList<GalleryMediaItem> mediaItems = new ArrayList<>();
+            ArrayList<GalleryMediaItem> directItems = new ArrayList<>();
+            for (GalleryMediaItem item : chosen) {
                 if ("media".equals(item.uri.getAuthority())) mediaItems.add(item);
                 else directItems.add(item);
             }
-            int directlyRemoved = deleteDirectly(directItems);
+            int directlyRemoved = mediaActions.deleteDirectly(directItems);
             if (!mediaItems.isEmpty()) {
                 ArrayList<Uri> uris = new ArrayList<>();
-                for (MediaItem item : mediaItems) uris.add(item.uri);
+                for (GalleryMediaItem item : mediaItems) uris.add(item.uri);
                 try {
                     PendingIntent request = MediaStore.createDeleteRequest(getContentResolver(), uris);
                     pendingSystemDelete = mediaItems;
@@ -490,21 +412,7 @@ public final class GalleryActivity extends ComponentActivity {
             finishDirectDelete(chosen.size(), directlyRemoved);
             return;
         }
-        finishDirectDelete(chosen.size(), deleteDirectly(chosen));
-    }
-
-    private int deleteDirectly(List<MediaItem> chosen) {
-        int removed = 0;
-        for (MediaItem item : chosen) {
-            try {
-                if (getContentResolver().delete(item.uri, null, null) > 0) removed++;
-                else {
-                    DocumentFile file = DocumentFile.fromSingleUri(this, item.uri);
-                    if (file != null && file.delete()) removed++;
-                }
-            } catch (RuntimeException ignored) { }
-        }
-        return removed;
+        finishDirectDelete(chosen.size(), mediaActions.deleteDirectly(chosen));
     }
 
     private void finishDirectDelete(int requested, int removed) {
@@ -553,7 +461,6 @@ public final class GalleryActivity extends ComponentActivity {
     private int paper() { return ContextCompat.getColor(this, R.color.paper); }
     private int ink() { return ContextCompat.getColor(this, R.color.ink); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
-    private String safeName(String name) { return name == null ? "Media" : name; }
     private String formatDate(long time) {
         if (time <= 0) return "Media";
         return new SimpleDateFormat("dd MMM yyyy\nHH:mm", Locale.getDefault()).format(new Date(time));
@@ -564,62 +471,4 @@ public final class GalleryActivity extends ComponentActivity {
         super.onDestroy();
     }
 
-    private final class ZoomImageView extends ImageView {
-        private final Matrix matrix = new Matrix();
-        private final ScaleGestureDetector scaleDetector;
-        private float scale = 1f;
-        private float lastX;
-        private float lastY;
-        private long lastTap;
-
-        ZoomImageView() {
-            super(GalleryActivity.this);
-            setBackgroundColor(Color.BLACK);
-            setScaleType(ScaleType.MATRIX);
-            scaleDetector = new ScaleGestureDetector(GalleryActivity.this,
-                    new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                        @Override public boolean onScale(ScaleGestureDetector detector) {
-                            float next = Math.max(1f, Math.min(6f, scale * detector.getScaleFactor()));
-                            float factor = next / scale;
-                            scale = next;
-                            matrix.postScale(factor, factor, detector.getFocusX(), detector.getFocusY());
-                            setImageMatrix(matrix);
-                            return true;
-                        }
-                    });
-        }
-
-        @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) { fit(); }
-        @Override public void setImageBitmap(Bitmap bitmap) { super.setImageBitmap(bitmap); post(this::fit); }
-
-        private void fit() {
-            if (getDrawable() == null || getWidth() == 0 || getHeight() == 0) return;
-            float sx = getWidth() / (float) getDrawable().getIntrinsicWidth();
-            float sy = getHeight() / (float) getDrawable().getIntrinsicHeight();
-            float base = Math.min(sx, sy);
-            float dx = (getWidth() - getDrawable().getIntrinsicWidth() * base) / 2f;
-            float dy = (getHeight() - getDrawable().getIntrinsicHeight() * base) / 2f;
-            matrix.reset();
-            matrix.postScale(base, base);
-            matrix.postTranslate(dx, dy);
-            scale = 1f;
-            setImageMatrix(matrix);
-        }
-
-        @Override public boolean onTouchEvent(MotionEvent event) {
-            scaleDetector.onTouchEvent(event);
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                long now = System.currentTimeMillis();
-                if (now - lastTap < 300) fit();
-                lastTap = now;
-                lastX = event.getX(); lastY = event.getY();
-            } else if (event.getActionMasked() == MotionEvent.ACTION_MOVE &&
-                    !scaleDetector.isInProgress() && scale > 1f) {
-                matrix.postTranslate(event.getX() - lastX, event.getY() - lastY);
-                setImageMatrix(matrix);
-                lastX = event.getX(); lastY = event.getY();
-            }
-            return true;
-        }
-    }
 }
